@@ -12,6 +12,7 @@
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 #include "ClusterExpansion.h"
 #include "SymmetrySpglib.h"
 #include "JsonUtility.h"
@@ -69,12 +70,18 @@
 #include "PrintUtility.h"
 #include "ClusterExpansionParameters.h"
 >>>>>>> Stashed changes
+=======
+#include "SymmetricCE.h"
+#include "PrintUtility.h"
+#include "ClusterExpansionParameters.h"
+>>>>>>> Stashed changes
 
 using namespace std;
 
 class EnergyPredictor
 {
 public:
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
@@ -433,6 +440,36 @@ private:
         const vector<double> &clusterVector);
 
 >>>>>>> Stashed changes
+=======
+    EnergyPredictor(
+        const ClusterExpansionParameters &ceParams,
+        const Config &supercellConfig,
+        const Config &primitiveConfig);
+
+    double ComputeLocalFormationEnergyOfSite(
+        const Config &config,
+        const size_t &latticeId);
+
+    // Returns total energy of config using Symmetric site centered cluster expansion
+    // E = sum_i * Ei
+    double ComputeEnergyOfConfig(const Config &config);
+
+    // Returns the dE due to atom swap
+    double GetDeSwap(
+        Config &config,
+        const pair<size_t, size_t> &latticeIdJumpPair);
+
+
+  private:
+    // Returns total formation energy
+    double GetTotalFormationEnergy(
+        const vector<double> &clusterVector);
+
+    // Returns total energy
+    double GetTotalEnergy(
+        const vector<double> &clusterVector);
+
+>>>>>>> Stashed changes
     static unordered_map<string, int> GetElementCountMap(
         const Config &supercellConfig);
     
@@ -453,6 +490,9 @@ private:
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
