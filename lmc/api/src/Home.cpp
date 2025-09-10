@@ -188,7 +188,10 @@ namespace api
     ClusterExpansionParameters ceParams(parameter.json_coefficients_filename_);
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
     Config config;
@@ -245,6 +248,9 @@ namespace api
   {
     ClusterExpansionParameters ceParams(parameter.json_coefficients_filename_);
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
@@ -282,6 +288,7 @@ namespace api
     }
     cout << endl;
 
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
     cout << "Finish config reading. Start CMC." << endl;
@@ -337,6 +344,8 @@ namespace api
     }
     cout << endl;
 
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
