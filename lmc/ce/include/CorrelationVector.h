@@ -27,11 +27,14 @@ VectorXd GetCorrelationVector(
 
 VectorXd GetCorrelationVector(
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
   const Config &config, 
   BasisSet &atomicBasis, 
   const vector<size_t> &canonicalSortedLatticeIds, 
   const vector<pair<vector<vector<size_t>>, LatticeClusterType>> &equivalentEncodedClusters);
 =======
+=======
+>>>>>>> Stashed changes
     const Config &config,
     BasisSet &atomicBasis,
     const vector<pair<vector<vector<size_t>>, LatticeClusterType>> &equivalentOrbitVector);
@@ -47,6 +50,9 @@ double GetOrbitCorrelationFunction(
     const size_t &targetLatticeId,
     const Element &elementToAssign,
     const vector<vector<size_t>> &orbitVector);
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 
 #endif // LMC_CE_INCLUDE_CORRELATIONVECTOR_H_

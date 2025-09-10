@@ -37,11 +37,17 @@ namespace mc
                    "cmc_log.txt"),
         energyChangePredictor_(
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
           predictorFilename, 
           config, 
           supercellConfig, 
           elementSet
         ),
+=======
+            ceParams,
+            config,
+            supercellConfig),
+>>>>>>> Stashed changes
 =======
             ceParams,
             config,

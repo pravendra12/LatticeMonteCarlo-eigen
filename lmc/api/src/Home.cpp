@@ -186,6 +186,62 @@ namespace api
   mc::CanonicalMcSerial BuildCanonicalMcSerialFromParameter(const Parameter &parameter)
   {
     ClusterExpansionParameters ceParams(parameter.json_coefficients_filename_);
+<<<<<<< Updated upstream
+=======
+    Config config;
+    if (parameter.map_filename_.empty())
+    {
+      // Generalized function to read configuration
+      // Supported formats are: .cfg, .POSCAR, .cfg.gz, .cfg.bz2, .POSCAR.gz, .POSCAR.bz2
+      config = Config::ReadConfig(parameter.config_filename_);
+
+      config.UpdateNeighborList(parameter.cutoffs_);
+    }
+    else
+    {
+      // Need to figure this out
+      config = Config::ReadMap("lattice.txt", "element.txt", parameter.map_filename_);
+    }
+
+    auto supercell_config = Config::GenerateSupercell(parameter.supercell_size_,
+                                                      parameter.lattice_param_,
+                                                      "Mo",
+                                                      parameter.structure_type_);
+
+    // supercell_config.UpdateNeighborList(parameter.cutoffs_);
+
+    // Getting element set from the configuration
+    auto atom_vector = config.GetAtomVector();
+    set<Element> element_set(atom_vector.begin(), atom_vector.end());
+
+    // Print the elements in the set
+    cout << "element_set: ";
+    for (const auto &element : element_set)
+    {
+      cout << element.GetElementString() << " ";
+    }
+    cout << endl;
+
+    cout << "Finish config reading. Start CMC." << endl;
+
+
+    return mc::CanonicalMcSerial{config,
+                                 supercell_config,
+                                 parameter.log_dump_steps_,
+                                 parameter.config_dump_steps_,
+                                 parameter.maximum_steps_,
+                                 parameter.thermodynamic_averaging_steps_,
+                                 parameter.restart_steps_,
+                                 parameter.restart_energy_,
+                                 parameter.temperature_,
+                                 ceParams};
+  }
+
+  mc::KineticMcChainOmpi BuildKineticMcChainOmpiFromParameter(const Parameter
+                                                                  &parameter)
+  {
+    ClusterExpansionParameters ceParams(parameter.json_coefficients_filename_);
+>>>>>>> Stashed changes
     Config config;
     if (parameter.map_filename_.empty())
     {
@@ -220,6 +276,7 @@ namespace api
     }
     cout << endl;
 
+<<<<<<< Updated upstream
     cout << "Finish config reading. Start CMC." << endl;
 
 
@@ -273,6 +330,8 @@ namespace api
     }
     cout << endl;
 
+=======
+>>>>>>> Stashed changes
 
     cout << "Finish config reading. Start KMC." << endl;
 

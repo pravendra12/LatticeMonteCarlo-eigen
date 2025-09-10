@@ -49,6 +49,7 @@ vector<pair<Matrix3d, Vector3d>> GetSymmetryOperations(
     const double symprec = 1e-5);
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 vector<set<vector<size_t>>> GetEquivalentClusters(
     const Config &config,
     const unordered_set<size_t> &latticeIdSet,
@@ -57,6 +58,8 @@ vector<set<vector<size_t>>> GetEquivalentClusters(
     const bool debug = false);
 
 
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 unordered_map<size_t, Eigen::RowVector3d> GetCenteredNeighborsAlongJumpDirection(
