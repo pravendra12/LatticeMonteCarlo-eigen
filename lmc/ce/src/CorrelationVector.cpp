@@ -948,6 +948,105 @@ VectorXd GetCorrelationVector(
 
   return correlationVector;
 }
+*/
+VectorXd GetCorrelationVector(
+    const Config &config,
+    BasisSet &atomicBasis,
+    const vector<size_t> &canonicalSortedLatticeIds,
+    const vector<pair<vector<vector<size_t>>, LatticeClusterType>> &equivalentEncodedClusters)
+{
+  VectorXd correlationVector = VectorXd::Zero(equivalentEncodedClusters.size());
+
+  for (size_t idx = 0; idx < equivalentEncodedClusters.size(); ++idx)
+  {
+    const auto &encodedOrbitPair = equivalentEncodedClusters[idx];
+
+    // Handle empty cluster
+    if (encodedOrbitPair.first.size() == 1 && encodedOrbitPair.first[0].empty())
+    {
+      correlationVector(idx) = 1.0; // φ₀ = 1
+      continue;
+    }
+
+    vector<vector<size_t>> orbitVector;
+    orbitVector.reserve(encodedOrbitPair.first.size());
+
+    for (const auto &encodedCluster : encodedOrbitPair.first)
+    {
+      vector<size_t> cluster;
+      cluster.reserve(encodedCluster.size());
+
+      for (auto encodedIdx : encodedCluster)
+      {
+        cluster.emplace_back(canonicalSortedLatticeIds[encodedIdx]);
+      }
+      orbitVector.emplace_back(cluster);
+    }
+
+    double orbitCorrelationFunction = GetOrbitCorrelationFunction(
+        config,
+        atomicBasis,
+        orbitVector);
+
+    correlationVector(idx) = orbitCorrelationFunction;
+
+    // cout << orbitPair.second << " : " << orbitCorrelationFunction << endl;
+  }
+
+  return correlationVector;
+}
+
+// GetCorrelationVector with a element at specific site
+VectorXd GetCorrelationVector(
+    const Config &config,
+    BasisSet &atomicBasis,
+    const size_t &targetLatticeId,
+    const Element &elementToAssign,
+    const vector<size_t> &canonicalSortedLatticeIds,
+    const vector<pair<vector<vector<size_t>>, LatticeClusterType>> &equivalentEncodedClusters)
+{
+  VectorXd correlationVector = VectorXd::Zero(equivalentEncodedClusters.size());
+
+  for (size_t idx = 0; idx < equivalentEncodedClusters.size(); ++idx)
+  {
+    const auto &encodedOrbitPair = equivalentEncodedClusters[idx];
+
+    // Handle empty cluster
+    if (encodedOrbitPair.first.size() == 1 && encodedOrbitPair.first[0].empty())
+    {
+      correlationVector(idx) = 1.0; // φ₀ = 1
+      continue;
+    }
+
+    vector<vector<size_t>> orbitVector;
+    orbitVector.reserve(encodedOrbitPair.first.size());
+
+    for (const auto &encodedCluster : encodedOrbitPair.first)
+    {
+      vector<size_t> cluster;
+      cluster.reserve(encodedCluster.size());
+
+      for (auto encodedIdx : encodedCluster)
+      {
+        cluster.emplace_back(canonicalSortedLatticeIds[encodedIdx]);
+      }
+      orbitVector.emplace_back(cluster);
+    }
+
+    double orbitCorrelationFunction = GetOrbitCorrelationFunction(
+        config,
+        atomicBasis,
+        targetLatticeId,
+        elementToAssign,
+        orbitVector);
+
+    correlationVector(idx) = orbitCorrelationFunction;
+
+    // cout << orbitPair.second << " : " << orbitCorrelationFunction << endl;
+  }
+
+  return correlationVector;
+}
 
 VectorXd GetCorrelationVector(
     const Config &config,
@@ -1055,6 +1154,9 @@ double GetOrbitCorrelationFunction(const Config &config,
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
