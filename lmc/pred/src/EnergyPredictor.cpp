@@ -12,6 +12,7 @@
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 #include "PrintUtility.h"
 
 // This should just take the config and predictorFilename and
@@ -55,6 +56,8 @@ EnergyPredictor::EnergyPredictor(
 
 double EnergyPredictor::ComputeEnergyOfSite(
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
@@ -256,6 +259,7 @@ double EnergyPredictor::ComputeEnergyOfConfig(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 double EnergyPredictor::GetDeMigration(
     const Config &config,
     const pair<size_t, size_t> &latticeIdJumpPair)
@@ -281,6 +285,8 @@ double EnergyPredictor::GetDeMigration(
   return 0;
 }
 
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
