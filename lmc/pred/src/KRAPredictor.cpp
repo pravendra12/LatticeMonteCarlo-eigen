@@ -120,23 +120,13 @@ double KRAPredictor::GetKRA(
       config,
       atomicBasis_,
       canonicalSortedLatticeIds,
-      equivalentClustersEncoding_);
+      encodedOrbitsForPair_);
 
-  cout << equivalentClustersEncoding_.size() << endl;
+  // EKRA = J.Φ_α
 
-  // E = J.Φ_α
+  VectorXd kecis = KECIsMap_.at(migratingElement);
 
-  cout << correlationVector.size() << endl;
-
-  VectorXd elementEncoding = atomicBasis_.GetCachedAtomBasis(migratingElement);
-
-  cout << elementEncoding.size() << endl;
-
-
-  VectorXd combinedEncoding(correlationVector.size() + elementEncoding.size());
-  combinedEncoding << correlationVector, elementEncoding; // concatenates the two vectors
-
-  if (kecis_.size() != combinedEncoding.size())
+  if (kecis.size() != correlationVector.size())
   {
     throw runtime_error(
         "Error in `KRAPredictor::GetKRA`: migratingElement `" + migratingElement.GetElementString() +

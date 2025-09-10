@@ -90,6 +90,7 @@ namespace mc
 
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     // const ClusterExpansionParameters ceParams_;
 
 
@@ -102,12 +103,17 @@ namespace mc
     // EnergyPredictor energyChangePredictor_;
     PotentialEnergyEstimator energyChangePredictor_;
 =======
+=======
+>>>>>>> Stashed changes
     /** @brief Energy change estimator
      */
     // EnergyPredictor energyChangePredictor_;
     // PotentialEnergyEstimator energyChangePredictor_;
 
     EnergyPredictor energyChangePredictor_;
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 
     /** @brief Random Lattice Id Generator
