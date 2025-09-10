@@ -101,6 +101,7 @@ namespace mc
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     // const ClusterExpansionParameters ceParams_;
 
 
@@ -113,6 +114,8 @@ namespace mc
     // EnergyPredictor energyChangePredictor_;
     PotentialEnergyEstimator energyChangePredictor_;
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
@@ -152,6 +155,9 @@ namespace mc
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes

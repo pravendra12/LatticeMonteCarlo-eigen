@@ -39,11 +39,14 @@ VectorXd GetCorrelationVector(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
   const Config &config, 
   BasisSet &atomicBasis, 
   const vector<size_t> &canonicalSortedLatticeIds, 
   const vector<pair<vector<vector<size_t>>, LatticeClusterType>> &equivalentEncodedClusters);
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
@@ -95,6 +98,9 @@ double GetOrbitCorrelationFunction(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes

@@ -141,6 +141,7 @@ vector<pair<Matrix3d, Vector3d>> GetSymmetryOperations(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 // Helper function to get the equivalent clusters
 static vector<set<vector<size_t>>> GetEquivalentGroups(
     const map<vector<size_t>, set<vector<size_t>>> &equivalentMap,
@@ -205,6 +206,8 @@ static vector<set<vector<size_t>>> GetEquivalentGroups(
 
   return groups;
 }
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
@@ -401,7 +404,12 @@ vector<set<vector<size_t>>> GetEquivalentClusters(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
   auto FindClosestLatticeId = [&](const Vector3d &targetFractionalCoordinate, size_t &matchedLatticeId) -> bool
+=======
+
+  auto FindClosestLatticeId = [&](const Vector3d &targetFractionalCoordinate, size_t &matchedLatticeId, double tol = 1e-5) -> bool
+>>>>>>> Stashed changes
 =======
 
   auto FindClosestLatticeId = [&](const Vector3d &targetFractionalCoordinate, size_t &matchedLatticeId, double tol = 1e-5) -> bool
@@ -474,12 +482,15 @@ vector<set<vector<size_t>>> GetEquivalentClusters(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
       Vector3d diffFractional = pair.second - targetFractionalCoordinate;
       for (int k = 0; k < 3; ++k)
       {
         diffFractional[k] -= round(diffFractional[k]);
       }
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
@@ -536,7 +547,12 @@ vector<set<vector<size_t>>> GetEquivalentClusters(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     return (sqrt(minDistance) < symprec);
+=======
+    // If minDistance is below tolerance (in Å^2), consider it a match
+    return (sqrt(minDistance) < tol);
+>>>>>>> Stashed changes
 =======
     // If minDistance is below tolerance (in Å^2), consider it a match
     return (sqrt(minDistance) < tol);
@@ -1312,7 +1328,10 @@ vector<pair<vector<vector<size_t>>, LatticeClusterType>> GetEquivalentClustersEn
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
@@ -1372,6 +1391,10 @@ GetCenteredNeighboursSite(const Config &config,
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 =======
 
 >>>>>>> Stashed changes
@@ -1431,6 +1454,11 @@ GetCenteredNeighboursSite(const Config &config,
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+
+
+>>>>>>> Stashed changes
 =======
 
 
@@ -1502,6 +1530,7 @@ GetCenteredNeighboursSite(const Config &config,
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 
 vector<size_t> GetCanonicalSortedSitesForSite(
     const Config &config,
@@ -1531,6 +1560,9 @@ vector<size_t> GetCanonicalSortedSitesForSite(
 
   return sortedLatticeIdVector;
 }
+=======
+*/
+>>>>>>> Stashed changes
 =======
 */
 >>>>>>> Stashed changes

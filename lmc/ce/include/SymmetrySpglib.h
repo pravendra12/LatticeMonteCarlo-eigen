@@ -61,6 +61,7 @@ vector<pair<Matrix3d, Vector3d>> GetSymmetryOperations(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 vector<set<vector<size_t>>> GetEquivalentClusters(
     const Config &config,
     const unordered_set<size_t> &latticeIdSet,
@@ -69,6 +70,8 @@ vector<set<vector<size_t>>> GetEquivalentClusters(
     const bool debug = false);
 
 
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
