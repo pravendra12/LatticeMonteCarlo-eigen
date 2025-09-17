@@ -16,6 +16,11 @@ double EnergyPredictor::GetEnergyChange(
   auto firstElement = config.GetElementOfLattice(latticeIdJumpPair.first);
   auto secondElement = config.GetElementOfLattice(latticeIdJumpPair.second);
 
+  if (firstElement == secondElement)
+  {
+    return 0;
+  }
+
   bool firstIsVacancy = (firstElement == Element("X"));
   bool secondIsVacancy = (secondElement == Element("X"));
 

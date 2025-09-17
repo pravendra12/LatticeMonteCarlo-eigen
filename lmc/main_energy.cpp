@@ -36,7 +36,6 @@ int main()
       primCfg);
   cfg.UpdateNeighborList({3, 4, 5});
 
-
   pair<size_t, size_t> jumpPair = {0, cfg.GetNeighborLatticeIdVectorOfLattice(0, 1)[0]};
 
   cfg.SetElementOfLattice(0, Element("X"));
