@@ -9,6 +9,7 @@
 #include "ClusterDynamics.h"
 #include "ConfigEncoding.h"
 #include <memory>
+#include "AnsysFlags.h"
 
 namespace fs = std::filesystem;
 
@@ -21,39 +22,26 @@ namespace ansys
     Traverse(unsigned long long int initial_steps,
              unsigned long long int increment_steps,
              const std::vector<double> &cutoffs,
+             const AnsysFlags &ansys_flags,
              std::string log_type,
-             std::string config_type,
-             const bool extract_encoding,
-             const size_t maxBondOrder, 
-             const size_t maxClusterSize);
+             std::string config_type);
     virtual ~Traverse();
     void RunAnsys() const;
     //  void RunReformat() const;
 
-
-    static void RunAnsysOnConfig(
-      const size_t configId, 
-      const Config &config, 
-      const set<Element> &element_set, 
-      ostringstream &oss, 
-      const string &outputFolder);
-    
-    private:
-
-    void RunAnsysLCE(
-        const size_t configId,
+    void RunAnsysOnConfig(
         const Config &config,
-        set<Element> element_set,
+        const set<Element> &element_set,
         ostringstream &oss) const;
 
+  private:
     std::string GetHeaderFrameString(const std::set<Element> &element_set) const;
-
-    std::string GetHeaderFrameStringWithFlag(const std::set<Element> &element_set, const string &flag) const;
 
     const unsigned long long initial_steps_;
     const unsigned long long increment_steps_;
     unsigned long long final_steps_;
-    std::vector<double> cutoffs_;
+    const std::vector<double> cutoffs_;
+    const AnsysFlags ansys_flags_;
     const std::string log_type_;
     const std::string config_type_;
 
@@ -63,12 +51,6 @@ namespace ansys
     std::unordered_map<std::string, MapVariant> log_map_;
 
     mutable std::ofstream frame_ofs_;
-    
-    // Encoding
-    const bool extract_encoding_{};
-    const size_t maxBondOrder_{};
-    const size_t maxClusterSize_{};
-
   };
 
 } // namespace ansys

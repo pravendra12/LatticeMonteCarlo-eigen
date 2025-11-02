@@ -45,22 +45,18 @@ namespace ansys
   Traverse::Traverse(unsigned long long int initial_steps,
                      unsigned long long int increment_steps,
                      const std::vector<double> &cutoffs,
+                     const AnsysFlags &ansys_flags,
                      std::string log_type,
-                     std::string config_type,
-                     const bool extract_encoding,
-                     const size_t maxBondOrder,
-                     const size_t maxClusterSize)
+                     std::string config_type)
       : initial_steps_(initial_steps),
         increment_steps_(increment_steps),
         final_steps_(increment_steps),
         cutoffs_(std::move(cutoffs)),
+        ansys_flags_(ansys_flags),
         log_type_(std::move(log_type)),
         config_type_(std::move(config_type)),
         log_map_{},
-        frame_ofs_("ansys_frame_log.txt", std::ofstream::out),
-        extract_encoding_(extract_encoding),
-        maxBondOrder_(maxBondOrder),
-        maxClusterSize_(maxClusterSize)
+        frame_ofs_("ansys_frame_log.txt", std::ofstream::out)
   {
 
     std::string log_file_name;
@@ -182,16 +178,6 @@ namespace ansys
       auto atomVector = config.GetAtomVector();
       element_set = std::set<Element>(atomVector.begin(), atomVector.end());
 
-      if (extract_encoding_)
-      {
-        // Declare configEncoder once
-        configEncoder = std::make_unique<ConfigEncoding>(
-            config,
-            element_set,
-            maxBondOrder_,
-            maxClusterSize_);
-      }
-
       element_set.erase(Element("X"));
       frame_ofs_ << GetHeaderFrameString(element_set) << std::flush;
     }
@@ -221,45 +207,11 @@ namespace ansys
         const auto temperature = std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("temperature")).at(i);
         const auto energy = std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("energy")).at(i);
 
-        size_t selected_lattice_id = SIZE_MAX;
-
-        if (log_type_ == "kinetic_mc")
-        {
-          selected_lattice_id = static_cast<size_t>(std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("selected")).at(i));
-        }
-
         std::ostringstream &oss = output_buffers[local_index];
         oss << i << "\t" << time << "\t" << average_time << "\t" << temperature << "\t" << energy;
 
         // Analysis on the original configuration
-        RunAnsysOnConfig(i, config, element_set, oss, "AnalyzedConfigs");
-
-        if (extract_encoding_)
-        {
-          // Write the ce encoding to the file
-          oss << "\t";
-          VectorXd encodingVectorBefore = configEncoder->GetEncodeVector(config);
-
-          oss << encodingVectorBefore.transpose();
-
-          // Lattice Jump
-          oss << "\t";
-          size_t vacancyId = config.GetVacancyLatticeId();
-
-          // cout << "VacancyId: " << vacancyId << endl;
-          // cout << "Selected_Id: " << selected_lattice_id << endl;
-          // cout << "Distance Order: " << config.GetDistanceOrder(vacancyId, selected_lattice_id) << endl;
-
-          config.LatticeJump(make_pair(vacancyId, selected_lattice_id));
-          VectorXd encodingVectorAfter = configEncoder->GetEncodeVector(config);
-
-
-          // Also need to run the analysis on this config 
-          // but in principle these two config are just one step away hence we can assume
-          // that the sro param and B2 order param will be nearly same
-
-          oss << encodingVectorAfter.transpose();
-        }
+        RunAnsysOnConfig(config, element_set, oss);
 
         oss << "\n";
       }
@@ -275,134 +227,82 @@ namespace ansys
   }
 
   void Traverse::RunAnsysOnConfig(
-      const size_t configId,
       const Config &config,
       const set<Element> &element_set,
-      ostringstream &oss,
-      const string &outputFolder)
+      ostringstream &oss) const
   {
     // Analysis
 
     /// Short range order
-
-    ShortRangeOrder short_range_order(config, element_set);
-    const auto sro1 = short_range_order.FindWarrenCowley(1);
-    const auto sro2 = short_range_order.FindWarrenCowley(2);
-    const auto sro3 = short_range_order.FindWarrenCowley(3);
-
-    for (const auto &pair : sro1)
+    if (ansys_flags_.SRO)
     {
-      double sro1_value = sro1.count(pair.first) ? sro1.at(pair.first) : nan("");
-      double sro2_value = sro2.count(pair.first) ? sro2.at(pair.first) : nan("");
-      double sro3_value = sro3.count(pair.first) ? sro3.at(pair.first) : nan("");
-      oss << "\t" << sro1_value << "\t" << sro2_value << "\t" << sro3_value;
-    }
+      ShortRangeOrder short_range_order(config, element_set);
+      const auto sro1 = short_range_order.FindWarrenCowley(1);
+      const auto sro2 = short_range_order.FindWarrenCowley(2);
+      const auto sro3 = short_range_order.FindWarrenCowley(3);
 
-    // Global List
-    map<string, Config::ValueVariant> globalList;
+      for (const auto &pair : sro1)
+      {
+        double sro1_value = sro1.count(pair.first) ? sro1.at(pair.first) : nan("");
+        double sro2_value = sro2.count(pair.first) ? sro2.at(pair.first) : nan("");
+        double sro3_value = sro3.count(pair.first) ? sro3.at(pair.first) : nan("");
+        oss << "\t" << sro1_value << "\t" << sro2_value << "\t" << sro3_value << "\t";
+      }
+    }
 
     /// B2 Order
-
-    B2OrderParameter b2Order(config);
-    for (auto element : element_set)
+    if (ansys_flags_.B2OrderParam)
     {
-      double b2OrderParameter = b2Order.GetB2OrderParameter(element);
-      double alphaOccupancy = b2Order.GetAlphaSiteOccupancy(element);
-      double betaOccupancy = b2Order.GetBetaSiteOccupancy(element);
-
-      globalList["b2OrderParameter" + element.GetElementString()] = b2OrderParameter;
-
-      oss << "\t" << b2OrderParameter << "\t" << alphaOccupancy << "\t" << betaOccupancy;
-    }
-
-    // Cluster Dynamics
-
-    // Auxilary List
-    std::map<std::string, Config::VectorVariant> auxiliaryList;
-
-    // Cluster Size
-    vector<int> clusterSizeVector;
-
-    ClusterDynamics b2Cluster(config);
-
-    b2Cluster.detectB2Clusters(auxiliaryList, clusterSizeVector);
-
-    // Write cluster size to log file
-    oss << "\t";
-    for (size_t i = 0; i < clusterSizeVector.size(); ++i)
-    {
-      if (i == clusterSizeVector.size() - 1)
+      B2OrderParameter b2Order(config);
+      for (auto element : element_set)
       {
-        oss << clusterSizeVector[i];
-      }
-      else
-      {
-        oss << clusterSizeVector[i] << ", ";
+        double b2OrderParameter = b2Order.GetB2OrderParameter(element);
+        double alphaOccupancy = b2Order.GetAlphaSiteOccupancy(element);
+        double betaOccupancy = b2Order.GetBetaSiteOccupancy(element);
+
+        oss << b2OrderParameter << "\t" << alphaOccupancy << "\t" << betaOccupancy << "\t";
       }
     }
-
-    if (!fs::exists(outputFolder))
-    {
-      fs::create_directories(outputFolder);
-    }
-
-    // Write to file
-    Config::WriteXyzExtended(outputFolder + "/" + to_string(configId) + ".xyz.gz",
-                             config,
-                             auxiliaryList,
-                             globalList);
   }
 
   std::string Traverse::GetHeaderFrameString(const std::set<Element> &element_set) const
   {
     std::string header_frame = "steps\ttime\taverage_time\ttemperature\tenergy\t";
 
-    // For simple analysis
-    header_frame += GetHeaderFrameStringWithFlag(element_set, "");
-
-    // Local Config
-    if (extract_encoding_)
-    {
-      header_frame += "ce_encoding_before_jump\tce_encoding_after_jump\t";
-    }
-
-    if (!header_frame.empty() && header_frame.back() == '\t')
-    {
-      header_frame.back() = '\n';
-    }
-
-    return header_frame;
-  }
-
-  std::string Traverse::GetHeaderFrameStringWithFlag(const std::set<Element> &element_set, const string &flag) const
-  {
-    std::string header_frame = "";
     // SRO Parameter
-    static const std::vector<std::string> order_list{"first", "second", "third"};
-    for (auto element1 : element_set)
+
+    if (ansys_flags_.SRO)
     {
-      for (auto element2 : element_set)
+      static const std::vector<std::string> order_list{"first", "second", "third"};
+      for (auto element1 : element_set)
       {
-        for (const auto &order : order_list)
+        for (auto element2 : element_set)
         {
-          header_frame += "warren_cowley_" + order + "_" + element1.GetElementString() + "-" + element2.GetElementString() + flag + "\t";
+          for (const auto &order : order_list)
+          {
+            header_frame += "warren_cowley_" + order + "_" + element1.GetElementString() + "-" + element2.GetElementString() + "\t";
+          }
         }
       }
     }
 
     // B2 Order Parameter
 
-    for (auto element : element_set)
+    if (ansys_flags_.B2OrderParam)
     {
-      auto elementString = element.GetElementString();
-      header_frame += "B2_order_param_" + elementString + flag + "\t" +
-                      "alpha_occupancy_" + elementString + flag + "\t" +
-                      "beta_occupancy_" + elementString + flag + "\t";
+      for (auto element : element_set)
+      {
+        auto elementString = element.GetElementString();
+        header_frame += "B2_order_param_" + elementString + "\t" +
+                        "alpha_occupancy_" + elementString + "\t" +
+                        "beta_occupancy_" + elementString + "\t";
+      }
     }
 
-    // Cluster Dynamics
-
-    header_frame += "B2_cluster_size" + flag + "\t";
+    if (!header_frame.empty() && header_frame.back() == '\t')
+    {
+      header_frame.back() = '\n';
+    }
 
     return header_frame;
   }

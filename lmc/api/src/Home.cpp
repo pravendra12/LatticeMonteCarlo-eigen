@@ -145,11 +145,8 @@ namespace api
       cout << endl;
       cout << "log_type: " << parameter.log_type_ << endl;
       cout << "config_type: " << parameter.config_type_ << endl;
-
-      cout << "Parameters for CE Encoding" << endl;
-      cout << "extract_encoding: " << parameter.extract_encoding_ << endl;
-      cout << "max_bond_order: " << parameter.max_bond_order_ << endl;
-      cout << "max_cluster_size: " << parameter.max_cluster_size_ << endl;
+      cout << "enable_sro: " << parameter.enable_sro_ << endl;
+      cout << "enable_b2_order_param: " << parameter.enable_b2_order_param_ << endl;
     }
   }
 
@@ -398,7 +395,7 @@ namespace api
     cout << "Simulation Completed" << endl;
   }
 
-   void RunKineticMcFirstOmpFromParameter(const Parameter
+  void RunKineticMcFirstOmpFromParameter(const Parameter
                                              &parameter)
   {
     Config config;
@@ -477,15 +474,16 @@ namespace api
 
   ansys::Traverse BuildIteratorFromParameter(const Parameter &parameter)
   {
+    AnsysFlags ansysFlags;
+    ansysFlags.SRO = parameter.enable_sro_;
+    ansysFlags.B2OrderParam = parameter.enable_b2_order_param_;
 
     return ansys::Traverse{parameter.initial_steps_,
                            parameter.increment_steps_,
                            parameter.cutoffs_,
+                           ansysFlags,
                            parameter.log_type_,
-                           parameter.config_type_,
-                           parameter.extract_encoding_,
-                           parameter.max_bond_order_,
-                           parameter.max_cluster_size_};
+                           parameter.config_type_};
   }
 
   void RunSimulatedAnnealingFromParameter(const Parameter

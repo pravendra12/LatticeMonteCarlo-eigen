@@ -26,6 +26,7 @@
 #include "VacancyMigrationPredictor.h"
 #include "ClusterExpansionParameters.h"
 #include "KineticMcFirstOmp.h"
+#include "AnsysFlags.h"
 
 using namespace std;
 

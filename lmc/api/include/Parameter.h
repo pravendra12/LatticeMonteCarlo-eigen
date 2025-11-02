@@ -162,6 +162,11 @@ struct Parameter {
 
   /// Early stopping criteria based on the number of steps.
   unsigned long long int early_stop_steps_{};
+
+
+  // Flags for ansys
+  bool enable_sro_{};
+  bool enable_b2_order_param_{};
 };
 } // namespace api
 
