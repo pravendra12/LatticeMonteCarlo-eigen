@@ -101,7 +101,7 @@ size_t Config::GetCentralAtomLatticeId() const
 
   // Exit the program if no match is found
   std::cerr << "Error: Central atom not found in the lattice!" << std::endl;
-   exit(EXIT_FAILURE); // Exit with failure status
+  exit(EXIT_FAILURE); // Exit with failure status
 }
 
 size_t Config::GetVacancyAtomId() const
@@ -151,7 +151,6 @@ Config::GetElementOfAtomIdVectorMap() const
   }
   return element_list_map;
 }
-
 
 std::vector<size_t> Config::GetNeighborAtomIdVectorOfAtom(size_t atom_id, size_t distance_order) const
 {
@@ -218,7 +217,6 @@ size_t Config::GetLatticeIdOfAtom(size_t atomId) const
 {
   return atom_to_lattice_hashmap_.at(atomId);
 }
-
 
 Eigen::Ref<const Eigen::Vector3d> Config::GetRelativePositionOfLattice(size_t lattice_id) const
 {
@@ -574,9 +572,6 @@ void Config::LatticeJump(const std::pair<size_t, size_t> &lattice_id_jump_pair)
   atom_to_lattice_hashmap_.at(atom_id_rhs) = lattice_id_lhs;
   lattice_to_atom_hashmap_.at(lattice_id_lhs) = atom_id_rhs;
   lattice_to_atom_hashmap_.at(lattice_id_rhs) = atom_id_lhs;
-
-
-
 
   //  std::cout << "After Swap : " << std::endl;
   //  std::cout << "Lattice ID : " << "{ " << lattice_id_lhs << GetElementOfLattice(lattice_id_lhs) << ", " <<
@@ -951,6 +946,94 @@ Config Config::ReadCfg(const std::string &filename)
     relative_position_matrix.col(static_cast<int>(id)) = relative_position;
   }
   Config config_in = Config{basis, relative_position_matrix, atom_vector};
+  config_in.ReassignLattice();
+  config_in.Wrap();
+  return config_in;
+}
+
+Config Config::ReadXYZ(const std::string &filename)
+{
+  std::ifstream ifs(filename, std::ios_base::in | std::ios_base::binary);
+  if (!ifs)
+    throw std::runtime_error("Could not open file: " + filename);
+
+  // Setup filtering stream for .gz/.bz2 (or uncompressed)
+  boost::iostreams::filtering_istream fis;
+  const std::string ext = boost::filesystem::path(filename).extension().string();
+  if (ext == ".gz")
+    fis.push(boost::iostreams::gzip_decompressor());
+  else if (ext == ".bz2")
+    fis.push(boost::iostreams::bzip2_decompressor());
+  fis.push(ifs);
+
+  // Read number of atoms
+  size_t num_atoms = 0;
+  fis >> num_atoms;
+  if (!fis)
+    throw std::runtime_error("Failed to read atom count from: " + filename);
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // skip remainder of first line
+
+  // Read comment line and try to parse lattice if present
+  std::string comment_line;
+  std::getline(fis, comment_line);
+
+  Eigen::Matrix3d basis = Eigen::Matrix3d::Identity(); // default if no lattice provided
+  const std::string lattice_key = "Lattice=\"";
+  auto pos = comment_line.find(lattice_key);
+  if (pos != std::string::npos)
+  {
+    auto start = pos + lattice_key.size();
+    auto end = comment_line.find('"', start);
+    if (end != std::string::npos && end > start)
+    {
+      std::string inner = comment_line.substr(start, end - start);
+      std::istringstream iss(inner);
+      std::vector<double> vals;
+      double v;
+      while (iss >> v)
+        vals.push_back(v);
+
+      if (vals.size() == 9)
+      {
+        // writer used row-major ordering via basis_.format(fmt)
+        basis << vals[0], vals[1], vals[2],
+            vals[3], vals[4], vals[5],
+            vals[6], vals[7], vals[8];
+      }
+      else
+      {
+        throw std::runtime_error("Lattice entry found but does not contain 9 numbers.");
+      }
+    }
+  }
+
+  // Read atoms (element + cartesian x,y,z)
+  std::vector<Element> atom_vector;
+  atom_vector.reserve(num_atoms);
+  Eigen::Matrix3Xd cartesian_positions(3, static_cast<int>(num_atoms));
+  for (size_t i = 0; i < num_atoms; ++i)
+  {
+    std::string type;
+    Eigen::Vector3d cart;
+    if (!(fis >> type >> cart(0) >> cart(1) >> cart(2)))
+      throw std::runtime_error("Failed to read atom line " + std::to_string(i) + " from " + filename);
+
+    atom_vector.emplace_back(type);
+    cartesian_positions.col(static_cast<int>(i)) = cart;
+  }
+
+  // Convert cartesian -> fractional (relative) using basis
+  Eigen::Matrix3Xd relative_positions(3, static_cast<int>(num_atoms));
+  if (std::abs(basis.determinant()) < 1e-12)
+  {
+    throw std::runtime_error("Basis matrix is singular or near-singular.");
+  }
+  Eigen::Matrix3d inv_basis = basis.inverse();
+  for (int i = 0; i < static_cast<int>(num_atoms); ++i)
+    relative_positions.col(i) = inv_basis * cartesian_positions.col(i);
+
+  // Construct Config (uses the same constructor you used elsewhere)
+  Config config_in{basis, relative_positions, atom_vector};
   config_in.ReassignLattice();
   config_in.Wrap();
   return config_in;
@@ -1398,4 +1481,3 @@ Config Config::ExtractLocalSupercell(
   Eigen::Matrix3d newBasis = GetBasis();
   return Config(newBasis, relativePositionMatrix, atomVector);
 }
-

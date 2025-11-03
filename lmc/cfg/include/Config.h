@@ -293,6 +293,8 @@ public:
    */
   static Config ReadCfg(const std::string &filename);
 
+  static Config ReadXYZ(const std::string &filename);
+
   /*! \brief Read the configuration from a POSCAR file.
    *  \param filename  The name of the POSCAR file.
    *  \return          The configuration read from the file.

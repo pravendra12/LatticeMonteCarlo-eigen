@@ -35,6 +35,26 @@ namespace ansys
       }
       config.UpdateNeighborList(cutoff);
     }
+    else if (config_type == "xyz")
+    {
+      string base = std::to_string(i);
+      try
+      {
+        config = Config::ReadConfig(base + ".xyz");
+      }
+      catch (...)
+      {
+        try
+        {
+          config = Config::ReadConfig(base + ".xyz.gz");
+        }
+        catch (...)
+        {
+          throw std::runtime_error("Failed to load config: tried " + base + ".xyz and " + base + ".xyz.gz");
+        }
+      }
+      config.UpdateNeighborList(cutoff);
+    }
     else
     {
       throw std::invalid_argument("Unknown config type: " + config_type);
@@ -120,7 +140,7 @@ namespace ansys
         {
           continue;
         }
-        
+
         try
         {
           const auto double_value = boost::lexical_cast<double>(buffer);

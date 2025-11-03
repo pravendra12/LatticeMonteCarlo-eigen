@@ -3,6 +3,7 @@
  */
 
 #include "Home.h"
+/*
 int main(int argc, char *argv[])
 {
   if (argc == 1)
@@ -16,4 +17,15 @@ int main(int argc, char *argv[])
 
   
 }
-  
+  */
+
+int main()
+{
+
+  // auto cfg = Config::ReadXYZ("//media/sf_Phd/Structures/TiMo_Supercell.xyz");
+  auto cfg = Config::GenerateSupercell(10, 3.2, "Mo", "BCC");
+  Config::WriteXyzExtended("//media/sf_Phd/Structures/Mo_test.xyz.gz", cfg, {}, {});
+  Config::WriteConfig("//media/sf_Phd/Structures/Mo_test.cfg.gz", cfg);
+  auto cfg2 = Config::ReadXYZ("//media/sf_Phd/Structures/Mo_test.xyz.gz");
+
+}
