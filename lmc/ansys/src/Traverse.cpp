@@ -116,6 +116,11 @@ namespace ansys
       while (line_stream >> buffer)
       {
         const auto &key = headers[col_index];
+        if (col_index > 5)
+        {
+          continue;
+        }
+        
         try
         {
           const auto double_value = boost::lexical_cast<double>(buffer);
