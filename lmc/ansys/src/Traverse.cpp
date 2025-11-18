@@ -40,13 +40,13 @@ namespace ansys
       string base = std::to_string(i);
       try
       {
-        config = Config::ReadConfig(base + ".xyz");
+        config = Config::ReadXYZ(base + ".xyz");
       }
       catch (...)
       {
         try
         {
-          config = Config::ReadConfig(base + ".xyz.gz");
+          config = Config::ReadXYZ(base + ".xyz.gz");
         }
         catch (...)
         {
@@ -195,8 +195,6 @@ namespace ansys
     const Config referenceConfig;
     const set<Element> elementSet;
 
-    std::unique_ptr<ConfigEncoding> configEncoder;
-
     // Write header once
     {
       auto config = GetConfig(config_type_, config_indices[0], cutoffs_);
@@ -221,19 +219,39 @@ namespace ansys
         unsigned long long i = config_indices[idx];
         auto config = GetConfig(config_type_, i, cutoffs_);
 
+        std::cout << " Here " << config.GetNumAtoms() << std::endl;
+
+        for (const auto &entry : log_map_)
+        {
+          cout << entry.first << endl;
+        }
+
+        /*
+                const auto time = log_map_.find("time") == log_map_.end()
+                                      ? nan("")
+                                      : std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("time")).at(i);
+
+                const auto temperature = std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("temperature")).at(i);
+                const auto energy = std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("energy")).at(i);
+                */
+
+                cout << i << endl;
         const auto time = log_map_.find("time") == log_map_.end()
-                              ? nan("")
+                              ? std::numeric_limits<double>::quiet_NaN()
                               : std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("time")).at(i);
 
-        const auto average_time = log_map_.find("average_time") == log_map_.end()
-                                      ? nan("")
-                                      : std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("average_time")).at(i);
+        const auto temperature = log_map_.find("temperature") == log_map_.end()
+                                     ? std::numeric_limits<double>::quiet_NaN()
+                                     : std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("temperature")).at(i);
 
-        const auto temperature = std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("temperature")).at(i);
-        const auto energy = std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("energy")).at(i);
+        const auto energy = log_map_.find("energy") == log_map_.end()
+                                ? std::numeric_limits<double>::quiet_NaN()
+                                : std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("energy")).at(i);
+
+        std::cout << i << "\t" << time << "\t" << temperature << "\t" << energy << std::endl;
 
         std::ostringstream &oss = output_buffers[local_index];
-        oss << i << "\t" << time << "\t" << average_time << "\t" << temperature << "\t" << energy;
+        oss << i << "\t" << time << "\t" << temperature << "\t" << energy;
 
         // Analysis on the original configuration
         RunAnsysOnConfig(config, element_set, oss);
@@ -292,7 +310,7 @@ namespace ansys
 
   std::string Traverse::GetHeaderFrameString(const std::set<Element> &element_set) const
   {
-    std::string header_frame = "steps\ttime\taverage_time\ttemperature\tenergy\t";
+    std::string header_frame = "steps\ttime\ttemperature\tenergy\t";
 
     // SRO Parameter
 

@@ -12,6 +12,7 @@
 #include "AnsysFlags.h"
 
 namespace fs = std::filesystem;
+using namespace std;
 
 namespace ansys
 {

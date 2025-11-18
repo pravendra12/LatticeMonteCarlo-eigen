@@ -1,12 +1,11 @@
 simulation_method Ansys
-log_type kinetic_mc
+#log_type kinetic_mc
 #log_type canonical_mc
+log_type simulated_annealing
 config_type config
+#config_type xyz
 cutoffs 3.20, 4.6, 5.4
 initial_steps 0
 increment_steps 10000
-
-# Extract encoding using CE
-extract_encoding true
-max_bond_order 3
-max_cluster_size 3
+enable_sro true
+enable_b2_order_param true

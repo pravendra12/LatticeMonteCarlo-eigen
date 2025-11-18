@@ -1024,7 +1024,7 @@ pair<vector<double>, vector<double>> SymmetricCE::GetLocalClusterVectorForPair(
   // can be considered as made up of equal contributions from
   // all sites.
 
-  /*
+  
   // Compute total size for preallocation
   size_t total_elements = 1; // constant term
   for (size_t orbitIndex = 0; orbitIndex < primitiveOrbitList_->size(); ++orbitIndex)
@@ -1032,10 +1032,10 @@ pair<vector<double>, vector<double>> SymmetricCE::GetLocalClusterVectorForPair(
     const Orbit &primitiveOrbit = primitiveOrbitList_->getOrbit(orbitIndex);
     total_elements += primitiveOrbit.clusterVectorElements().size();
   }
-  */
+  
 
-  clusterVector1.resize(primitiveOrbitList_->size() + 1);
-  clusterVector2.resize(primitiveOrbitList_->size() + 1);
+  clusterVector1.resize(total_elements);
+  clusterVector2.resize(total_elements);
 
   // Constant term
   clusterVector1[0] = 1.0;
