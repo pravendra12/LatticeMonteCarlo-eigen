@@ -951,91 +951,103 @@ Config Config::ReadCfg(const std::string &filename)
   return config_in;
 }
 
-Config Config::ReadXYZ(const std::string &filename)
+
+Config Config::ReadXyz(const std::string &filename)
 {
-  std::ifstream ifs(filename, std::ios_base::in | std::ios_base::binary);
-  if (!ifs)
-    throw std::runtime_error("Could not open file: " + filename);
-
-  // Setup filtering stream for .gz/.bz2 (or uncompressed)
-  boost::iostreams::filtering_istream fis;
-  const std::string ext = boost::filesystem::path(filename).extension().string();
-  if (ext == ".gz")
-    fis.push(boost::iostreams::gzip_decompressor());
-  else if (ext == ".bz2")
-    fis.push(boost::iostreams::bzip2_decompressor());
-  fis.push(ifs);
-
-  // Read number of atoms
-  size_t num_atoms = 0;
-  fis >> num_atoms;
-  if (!fis)
-    throw std::runtime_error("Failed to read atom count from: " + filename);
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // skip remainder of first line
-
-  // Read comment line and try to parse lattice if present
-  std::string comment_line;
-  std::getline(fis, comment_line);
-
-  Eigen::Matrix3d basis = Eigen::Matrix3d::Identity(); // default if no lattice provided
-  const std::string lattice_key = "Lattice=\"";
-  auto pos = comment_line.find(lattice_key);
-  if (pos != std::string::npos)
+  // Open file stream (binary mode only matters for compressed reading)
+  std::ifstream ifs(filename, std::ios::in | std::ios::binary);
+  if (!ifs.is_open())
   {
-    auto start = pos + lattice_key.size();
-    auto end = comment_line.find('"', start);
-    if (end != std::string::npos && end > start)
-    {
-      std::string inner = comment_line.substr(start, end - start);
-      std::istringstream iss(inner);
-      std::vector<double> vals;
-      double v;
-      while (iss >> v)
-        vals.push_back(v);
+    throw std::runtime_error("Could not open file: " + filename);
+  }
 
-      if (vals.size() == 9)
-      {
-        // writer used row-major ordering via basis_.format(fmt)
-        basis << vals[0], vals[1], vals[2],
-            vals[3], vals[4], vals[5],
-            vals[6], vals[7], vals[8];
-      }
-      else
-      {
-        throw std::runtime_error("Lattice entry found but does not contain 9 numbers.");
-      }
+  // Setup boost filtering stream for optional decompression
+  boost::iostreams::filtering_istream fis;
+  auto ext = boost::filesystem::path(filename).extension().string();
+  if (ext == ".gz")
+  {
+    fis.push(boost::iostreams::gzip_decompressor());
+  }
+  else if (ext == ".bz2")
+  {
+    fis.push(boost::iostreams::bzip2_decompressor());
+  }
+  fis.push(ifs); // push the underlying file stream last
+
+  // --- Read number of atoms ---
+  size_t num_atoms;
+  fis >> num_atoms;
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+  std::string lattice_line;
+  std::getline(fis, lattice_line);
+
+  // Extract lattice numbers
+  size_t lat_start = lattice_line.find("Lattice=\"");
+  Eigen::Matrix3d basis = Eigen::Matrix3d::Identity();
+  if (lat_start != std::string::npos)
+  {
+    lat_start += 9; // move past 'Lattice="'
+    size_t lat_end = lattice_line.find('"', lat_start);
+    std::string lat_str = lattice_line.substr(lat_start, lat_end - lat_start);
+
+    std::istringstream lat_iss(lat_str);
+    std::vector<double> values;
+    double v;
+    while (lat_iss >> v)
+      values.push_back(v);
+
+    if (values.size() == 9)
+    {
+      basis << values[0], values[1], values[2],
+          values[3], values[4], values[5],
+          values[6], values[7], values[8];
+    }
+    else
+    {
+      throw std::runtime_error("Invalid lattice line, expected 9 numbers");
     }
   }
 
-  // Read atoms (element + cartesian x,y,z)
   std::vector<Element> atom_vector;
   atom_vector.reserve(num_atoms);
-  Eigen::Matrix3Xd cartesian_positions(3, static_cast<int>(num_atoms));
+
+  Eigen::Matrix3Xd cartesian_position_matrix(3, num_atoms);
+
+  // --- Read atoms line by line ---
+  std::string line;
   for (size_t i = 0; i < num_atoms; ++i)
   {
-    std::string type;
-    Eigen::Vector3d cart;
-    if (!(fis >> type >> cart(0) >> cart(1) >> cart(2)))
-      throw std::runtime_error("Failed to read atom line " + std::to_string(i) + " from " + filename);
+    if (!std::getline(fis, line))
+    {
+      throw std::runtime_error("Unexpected end of file while reading atom " + std::to_string(i + 1));
+    }
 
-    atom_vector.emplace_back(type);
-    cartesian_positions.col(static_cast<int>(i)) = cart;
+    std::istringstream iss(line);
+    std::string symbol;
+    double x, y, z;
+
+    if (!(iss >> symbol >> x >> y >> z))
+    {
+      throw std::runtime_error("Failed to parse atom line " + std::to_string(i + 1));
+    }
+
+    atom_vector.emplace_back(symbol);
+    cartesian_position_matrix(0, i) = x;
+    cartesian_position_matrix(1, i) = y;
+    cartesian_position_matrix(2, i) = z;
   }
 
-  // Convert cartesian -> fractional (relative) using basis
-  Eigen::Matrix3Xd relative_positions(3, static_cast<int>(num_atoms));
-  if (std::abs(basis.determinant()) < 1e-12)
-  {
-    throw std::runtime_error("Basis matrix is singular or near-singular.");
-  }
   Eigen::Matrix3d inv_basis = basis.inverse();
-  for (int i = 0; i < static_cast<int>(num_atoms); ++i)
-    relative_positions.col(i) = inv_basis * cartesian_positions.col(i);
 
-  // Construct Config (uses the same constructor you used elsewhere)
-  Config config_in{basis, relative_positions, atom_vector};
+  Eigen::Matrix3Xd relative_positions_matrix(3, cartesian_position_matrix.cols());
+  relative_positions_matrix = inv_basis * cartesian_position_matrix;
+
+  Config config_in = Config{basis, relative_positions_matrix, atom_vector};
+
   config_in.ReassignLattice();
   config_in.Wrap();
+
   return config_in;
 }
 

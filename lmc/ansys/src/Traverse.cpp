@@ -40,13 +40,13 @@ namespace ansys
       string base = std::to_string(i);
       try
       {
-        config = Config::ReadXYZ(base + ".xyz");
+        config = Config::ReadXyz(base + ".xyz");
       }
       catch (...)
       {
         try
         {
-          config = Config::ReadXYZ(base + ".xyz.gz");
+          config = Config::ReadXyz(base + ".xyz.gz");
         }
         catch (...)
         {
@@ -132,31 +132,33 @@ namespace ansys
         continue;
       }
       final_steps_ = step_number;
+
+      unordered_set<string> columns_to_read = {"time", "temperature", "energy"};
+
       size_t col_index = 1;
       while (line_stream >> buffer)
       {
         const auto &key = headers[col_index];
-        if (col_index > 5)
-        {
-          continue;
-        }
 
-        try
+        if (columns_to_read.find(key) != columns_to_read.end())
         {
-          const auto double_value = boost::lexical_cast<double>(buffer);
-          if (!std::holds_alternative<std::unordered_map<unsigned long long, double>>(log_map_[key]))
+          try
           {
-            log_map_[key] = std::unordered_map<unsigned long long, double>();
+            const auto double_value = boost::lexical_cast<double>(buffer);
+            if (!std::holds_alternative<std::unordered_map<unsigned long long, double>>(log_map_[key]))
+            {
+              log_map_[key] = std::unordered_map<unsigned long long, double>();
+            }
+            std::get<std::unordered_map<unsigned long long, double>>(log_map_[key])[step_number] = double_value;
           }
-          std::get<std::unordered_map<unsigned long long, double>>(log_map_[key])[step_number] = double_value;
-        }
-        catch (const boost::bad_lexical_cast &)
-        {
-          if (!std::holds_alternative<std::unordered_map<unsigned long long, std::string>>(log_map_[key]))
+          catch (const boost::bad_lexical_cast &)
           {
-            log_map_[key] = std::unordered_map<unsigned long long, std::string>();
+            if (!std::holds_alternative<std::unordered_map<unsigned long long, std::string>>(log_map_[key]))
+            {
+              log_map_[key] = std::unordered_map<unsigned long long, std::string>();
+            }
+            std::get<std::unordered_map<unsigned long long, std::string>>(log_map_[key])[step_number] = buffer;
           }
-          std::get<std::unordered_map<unsigned long long, std::string>>(log_map_[key])[step_number] = buffer;
         }
         col_index++;
       }
@@ -192,7 +194,6 @@ namespace ansys
     int total_configs = static_cast<int>(config_indices.size());
     int num_threads = omp_get_max_threads();
 
-    const Config referenceConfig;
     const set<Element> elementSet;
 
     // Write header once
@@ -219,36 +220,12 @@ namespace ansys
         unsigned long long i = config_indices[idx];
         auto config = GetConfig(config_type_, i, cutoffs_);
 
-        std::cout << " Here " << config.GetNumAtoms() << std::endl;
-
-        for (const auto &entry : log_map_)
-        {
-          cout << entry.first << endl;
-        }
-
-        /*
-                const auto time = log_map_.find("time") == log_map_.end()
-                                      ? nan("")
-                                      : std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("time")).at(i);
-
-                const auto temperature = std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("temperature")).at(i);
-                const auto energy = std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("energy")).at(i);
-                */
-
-                cout << i << endl;
         const auto time = log_map_.find("time") == log_map_.end()
-                              ? std::numeric_limits<double>::quiet_NaN()
-                              : std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("time")).at(i);
+                              ? nan("")
+                              : get<unordered_map<unsigned long long, double>>(log_map_.at("time")).at(i);
 
-        const auto temperature = log_map_.find("temperature") == log_map_.end()
-                                     ? std::numeric_limits<double>::quiet_NaN()
-                                     : std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("temperature")).at(i);
-
-        const auto energy = log_map_.find("energy") == log_map_.end()
-                                ? std::numeric_limits<double>::quiet_NaN()
-                                : std::get<std::unordered_map<unsigned long long, double>>(log_map_.at("energy")).at(i);
-
-        std::cout << i << "\t" << time << "\t" << temperature << "\t" << energy << std::endl;
+        const auto temperature = get<unordered_map<unsigned long long, double>>(log_map_.at("temperature")).at(i);
+        const auto energy = get<unordered_map<unsigned long long, double>>(log_map_.at("energy")).at(i);
 
         std::ostringstream &oss = output_buffers[local_index];
         oss << i << "\t" << time << "\t" << temperature << "\t" << energy;
