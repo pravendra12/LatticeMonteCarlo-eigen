@@ -14,7 +14,7 @@ class EnergyPredictor
 public:
   EnergyPredictor(
       SymmetricCEPredictor &symCEEnergyPredictor,
-      LVFEPredictor &lvfePredictor);
+      LVFEPredictor *lvfePredictor = nullptr);
 
   // Applied for any pair
   double GetEnergyChange(
@@ -28,7 +28,7 @@ public:
 
 private:
   SymmetricCEPredictor &symCEEnergyPredictor_;
-  LVFEPredictor &lvfePredictor_;
+  LVFEPredictor *lvfePredictor_;
 
   const vector<string> &allowedElements_;
 };

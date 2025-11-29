@@ -215,14 +215,13 @@ namespace api
     config.UpdateNeighborList(parameter.cutoffs_);
 
     // Declare LVFE Predictor
-    LVFEPredictor lvfePredictor(
-        ceParams,
-        config);
+    // LVFEPredictor lvfePredictor(
+    //     ceParams,
+    //     config);
 
     // Declare Energy Predictor
     EnergyPredictor energyChangePredictor(
-        symCEEnergyPredictor,
-        lvfePredictor);
+        symCEEnergyPredictor);
 
     cout << "Finish config reading. Start CMC." << endl;
 
@@ -278,14 +277,13 @@ namespace api
     config.UpdateNeighborList(parameter.cutoffs_);
 
     // Declare LVFE Predictor
-    LVFEPredictor lvfePredictor(
-        ceParams,
-        config);
+    // LVFEPredictor lvfePredictor(
+    //     ceParams,
+    //     config);
 
     // Declare Energy Predictor
     EnergyPredictor energyChangePredictor(
-        symCEEnergyPredictor,
-        lvfePredictor);
+        symCEEnergyPredictor);
 
     // Declare KRA Predictor
     KRAPredictor eKRAPredictor(
@@ -355,14 +353,13 @@ namespace api
     config.UpdateNeighborList(parameter.cutoffs_);
 
     // Declare LVFE Predictor
-    LVFEPredictor lvfePredictor(
-        ceParams,
-        config);
+    // LVFEPredictor lvfePredictor(
+    //     ceParams,
+    //     config);
 
     // Declare Energy Predictor
     EnergyPredictor energyChangePredictor(
-        symCEEnergyPredictor,
-        lvfePredictor);
+        symCEEnergyPredictor);
 
     // Declare KRA Predictor
     KRAPredictor eKRAPredictor(
@@ -432,14 +429,13 @@ namespace api
     config.UpdateNeighborList(parameter.cutoffs_);
 
     // Declare LVFE Predictor
-    LVFEPredictor lvfePredictor(
-        ceParams,
-        config);
+    // LVFEPredictor lvfePredictor(
+    //     ceParams,
+    //     config);
 
     // Declare Energy Predictor
     EnergyPredictor energyChangePredictor(
-        symCEEnergyPredictor,
-        lvfePredictor);
+        symCEEnergyPredictor);
 
     // Declare KRA Predictor
     KRAPredictor eKRAPredictor(
@@ -523,14 +519,13 @@ namespace api
     config.UpdateNeighborList(parameter.cutoffs_);
 
     // Declare LVFE Predictor
-    LVFEPredictor lvfePredictor(
-        ceParams,
-        config);
+    // LVFEPredictor lvfePredictor(
+    //     ceParams,
+    //     config);
 
     // Declare Energy Predictor
     EnergyPredictor energyChangePredictor(
-        symCEEnergyPredictor,
-        lvfePredictor);
+        symCEEnergyPredictor);
 
     cout << "Finish config reading. Start SA." << endl;
 

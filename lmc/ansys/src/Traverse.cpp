@@ -167,6 +167,7 @@ namespace ansys
     std::cout << "Initial Steps: " << initial_steps_ << std::endl;
     std::cout << "Increment Steps: " << increment_steps_ << std::endl;
     std::cout << "Final Steps: " << final_steps_ << std::endl;
+    
 
 #pragma omp parallel default(none) shared(std::cout)
     {
