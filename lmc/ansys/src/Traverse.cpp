@@ -167,7 +167,6 @@ namespace ansys
     std::cout << "Initial Steps: " << initial_steps_ << std::endl;
     std::cout << "Increment Steps: " << increment_steps_ << std::endl;
     std::cout << "Final Steps: " << final_steps_ << std::endl;
-    
 
 #pragma omp parallel default(none) shared(std::cout)
     {
@@ -185,6 +184,19 @@ namespace ansys
   {
     std::set<Element> element_set;
     std::vector<unsigned long long> config_indices;
+
+    if (ansys_flags_.B2ClusterAnsys)
+    {
+      fs::path cwd = fs::current_path();
+      fs::path configDir = cwd / "processedConfig";
+
+      if (!fs::exists(configDir))
+        fs::create_directory(configDir);
+
+      processedConfigOutPath_ = configDir.string();
+
+      std::cout << "Config directory created at: " << processedConfigOutPath_ << std::endl;
+    }
 
     // Generate config indices
     for (unsigned long long i = initial_steps_; i <= final_steps_; i += increment_steps_)
@@ -232,7 +244,7 @@ namespace ansys
         oss << i << "\t" << time << "\t" << temperature << "\t" << energy;
 
         // Analysis on the original configuration
-        RunAnsysOnConfig(config, element_set, oss);
+        RunAnsysOnConfig(config, element_set, oss, i);
 
         oss << "\n";
       }
@@ -250,7 +262,8 @@ namespace ansys
   void Traverse::RunAnsysOnConfig(
       const Config &config,
       const set<Element> &element_set,
-      ostringstream &oss) const
+      ostringstream &oss,
+      const size_t &configIdx) const
   {
     // Analysis
 
@@ -262,12 +275,20 @@ namespace ansys
       const auto sro2 = short_range_order.FindWarrenCowley(2);
       const auto sro3 = short_range_order.FindWarrenCowley(3);
 
-      for (const auto &pair : sro1)
+      static const std::vector<std::string> order_list{"first", "second", "third"};
+
+      for (auto e1 : element_set)
       {
-        double sro1_value = sro1.count(pair.first) ? sro1.at(pair.first) : nan("");
-        double sro2_value = sro2.count(pair.first) ? sro2.at(pair.first) : nan("");
-        double sro3_value = sro3.count(pair.first) ? sro3.at(pair.first) : nan("");
-        oss << "\t" << sro1_value << "\t" << sro2_value << "\t" << sro3_value << "\t";
+        for (auto e2 : element_set)
+        {
+          string key = e1.GetElementString() + "-" + e2.GetElementString();
+
+          double v1 = sro1.count(key) ? sro1.at(key) : nan("");
+          double v2 = sro2.count(key) ? sro2.at(key) : nan("");
+          double v3 = sro3.count(key) ? sro3.at(key) : nan("");
+
+          oss << "\t" << v1 << "\t" << v2 << "\t" << v3;
+        }
       }
     }
 
@@ -281,8 +302,18 @@ namespace ansys
         double alphaOccupancy = b2Order.GetAlphaSiteOccupancy(element);
         double betaOccupancy = b2Order.GetBetaSiteOccupancy(element);
 
-        oss << b2OrderParameter << "\t" << alphaOccupancy << "\t" << betaOccupancy << "\t";
+        oss << "\t" << b2OrderParameter << "\t" << alphaOccupancy << "\t" << betaOccupancy;
       }
+    }
+
+    // B2 Cluster Ansys, for all the configuraton under the assumption that
+    // configurations will not be large in contrast to TLMC version.
+
+    if (ansys_flags_.B2ClusterAnsys)
+    {
+      B2Cluster b2Cluster(config);
+      string filename = processedConfigOutPath_ + "/" + to_string(configIdx) + ".xyz.gz";
+      b2Cluster.WriteB2ClusterConfig(filename);
     }
   }
 

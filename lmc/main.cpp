@@ -13,5 +13,4 @@ int main(int argc, char *argv[])
   api::Parameter parameter(argc, argv);
   api::Print(parameter);
   api::Run(parameter);
-
 }

@@ -7,7 +7,7 @@
 #include "ShortRangeOrder.h"
 #include "B2OrderParameter.h"
 #include "ClusterDynamics.h"
-#include "ConfigEncoding.h"
+#include "B2Cluster.h"
 #include <memory>
 #include "AnsysFlags.h"
 
@@ -33,7 +33,8 @@ namespace ansys
     void RunAnsysOnConfig(
         const Config &config,
         const set<Element> &element_set,
-        ostringstream &oss) const;
+        ostringstream &oss, 
+        const size_t &configIdx) const;
 
   private:
     std::string GetHeaderFrameString(const std::set<Element> &element_set) const;
@@ -52,6 +53,7 @@ namespace ansys
     std::unordered_map<std::string, MapVariant> log_map_;
 
     mutable std::ofstream frame_ofs_;
+    mutable string processedConfigOutPath_;
   };
 
 } // namespace ansys

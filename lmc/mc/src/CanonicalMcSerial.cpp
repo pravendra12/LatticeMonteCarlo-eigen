@@ -60,7 +60,8 @@ namespace mc
       // One site would need to be a vacant site 
       // This can be made conditional based on the type of hamiltonian being used
     
-      auto latticeIdJumpPair = GenerateVacancyLatticeIdJumpPair();
+      // auto latticeIdJumpPair = GenerateVacancyLatticeIdJumpPair();
+      auto latticeIdJumpPair = GenerateLatticeIdJumpPair(); 
 
       auto dE = energyChangePredictor_.GetEnergyChange(config_,
                                                        latticeIdJumpPair);

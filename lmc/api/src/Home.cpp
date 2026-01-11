@@ -147,6 +147,7 @@ namespace api
       cout << "config_type: " << parameter.config_type_ << endl;
       cout << "enable_sro: " << parameter.enable_sro_ << endl;
       cout << "enable_b2_order_param: " << parameter.enable_b2_order_param_ << endl;
+      cout << "enable_b2_cluster_ansys: " << parameter.enable_b2_cluster_ansys_ << endl;
     }
   }
 
@@ -473,6 +474,7 @@ namespace api
     AnsysFlags ansysFlags;
     ansysFlags.SRO = parameter.enable_sro_;
     ansysFlags.B2OrderParam = parameter.enable_b2_order_param_;
+    ansysFlags.B2ClusterAnsys = parameter.enable_b2_cluster_ansys_;
 
     return ansys::Traverse{parameter.initial_steps_,
                            parameter.increment_steps_,

@@ -2,7 +2,8 @@
 #define LMC_ANSYS_INCLUDE_B2CLUSTER_H_
 
 #include "Config.h"
-#include "B2OrderParameter.h"
+#include <queue>
+#include <unordered_set>
 
 using namespace std;
 
@@ -11,24 +12,15 @@ class B2Cluster
 public:
   B2Cluster(const Config &config);
 
-  
-  // Returns the atom Ids of all the b2 cluster present in the configuration
+  void WriteB2ClusterConfig(const string &filename);
   vector<unordered_set<size_t>> GetB2Clusters();
-  
-  
-  
-  private:
-  void detectB2Clusters();
-  bool growB2Cluster(size_t latticeId,
-                     unordered_set<size_t> &cluster);
 
-  unordered_set<size_t> mergeIfIntersect(const unordered_set<size_t> &set1,
-                                         const unordered_set<size_t> &set2);
-  void mergeAllClusters();
+private:
+  void BuildB2Clusters();
+  bool isB2(const size_t latticeId);
 
   const Config &config_;
-  vector<unordered_set<size_t>> clusters_;
-  unordered_set<size_t> visited_;
+  vector<unordered_set<size_t>> b2ClusterVector_{};
 };
 
 #endif // LMC_ANSYS_INCLUDE_B2CLUSTER_H_

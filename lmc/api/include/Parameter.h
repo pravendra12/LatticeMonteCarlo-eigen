@@ -167,6 +167,7 @@ struct Parameter {
   // Flags for ansys
   bool enable_sro_{};
   bool enable_b2_order_param_{};
+  bool enable_b2_cluster_ansys_{};
 };
 } // namespace api
 

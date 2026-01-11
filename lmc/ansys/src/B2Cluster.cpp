@@ -1,141 +1,145 @@
 #include "B2Cluster.h"
 
-B2Cluster::B2Cluster(const Config &config) : config_(config),
-                                                         clusters_{},
-                                                         visited_{}
+B2Cluster::B2Cluster(const Config &config) : config_(config)
 {
-  detectB2Clusters();
+  BuildB2Clusters();
+}
+
+void B2Cluster::WriteB2ClusterConfig(const string &filename)
+{
+  size_t numSites = config_.GetNumLattices();
+
+  // Auxiliary lists
+  Config::VectorVariant clusterIdVec = vector<int>(numSites, -1);
+  Config::VectorVariant clusterSizeVec = vector<size_t>(numSites, 0);
+  Config::VectorVariant isSharedVec = vector<int>(numSites, 0); // 0 = not shared, 1 = shared
+
+  unordered_map<size_t, size_t> atomClusterCount;
+
+  // First pass: count how many clusters each atom belongs to
+  for (size_t clusterId = 0; clusterId < b2ClusterVector_.size(); ++clusterId)
+  {
+    for (size_t latticeId : b2ClusterVector_[clusterId])
+    {
+      auto atomId = config_.GetAtomIdOfLattice(latticeId);
+      atomClusterCount[atomId]++;
+    }
+  }
+
+  // Second pass: fill auxiliary lists
+  for (size_t clusterId = 0; clusterId < b2ClusterVector_.size(); ++clusterId)
+  {
+    size_t clusterSize = b2ClusterVector_[clusterId].size();
+    for (size_t latticeId : b2ClusterVector_[clusterId])
+    {
+      auto atomId = config_.GetAtomIdOfLattice(latticeId);
+      get<vector<int>>(clusterIdVec)[atomId] = int(clusterId);
+      get<vector<size_t>>(clusterSizeVec)[atomId] = clusterSize;
+
+      if (atomClusterCount[atomId] > 1)
+        get<vector<int>>(isSharedVec)[atomId] = 1; // mark as shared
+    }
+  }
+
+  map<string, Config::VectorVariant> auxiliaryLists;
+  auxiliaryLists["clusterId"] = clusterIdVec;
+  auxiliaryLists["clusterSize"] = clusterSizeVec;
+  auxiliaryLists["sharedAtom"] = isSharedVec; // new shared flag
+
+  map<string, Config::ValueVariant> globalList; // empty
+
+  Config::WriteXyzExtended(filename, config_, auxiliaryLists, globalList);
 }
 
 vector<unordered_set<size_t>> B2Cluster::GetB2Clusters()
 {
-  return clusters_;
+  return b2ClusterVector_;
 }
 
-void B2Cluster::detectB2Clusters()
+void B2Cluster::BuildB2Clusters()
 {
-  size_t numAtoms = config_.GetNumAtoms();
-  for (size_t i = 0; i < numAtoms; ++i)
+  const size_t numSites = config_.GetNumLattices();
+  unordered_set<size_t> visitedB2; // only B2 sites marked visited
+
+  for (size_t latticeId = 0; latticeId < numSites; ++latticeId)
   {
-    if (visited_.count(i))
+    // skip if site already processed as B2 center
+    if (visitedB2.count(latticeId))
       continue;
 
-    unordered_set<size_t> cluster;
-    if (growB2Cluster(i, cluster) && !cluster.empty())
+    // check if this site is a B2 center
+    if (!isB2(latticeId))
+      continue;
+
+    // start new cluster
+    unordered_set<size_t> currentCluster;
+    queue<size_t> bfsQueue;
+
+    bfsQueue.push(latticeId);
+    visitedB2.insert(latticeId);
+
+    while (!bfsQueue.empty())
     {
-      clusters_.push_back(move(cluster));
-    }
-  }
+      size_t center = bfsQueue.front();
+      bfsQueue.pop();
 
-  mergeAllClusters();
-  
-  /*
-  size_t vacancyId = static_cast<size_t>(-1);
-  
-  try
-  {
-    vacancyId = config_.GetVacancyAtomId();
-  }
-  catch (const std::exception &e)
-  {
-    std::cerr << "Warning: No vacancy found, setting vacancyId = -1.\n";
-  }
+      // add center to cluster
+      currentCluster.insert(center);
 
-  vector<int> atomClusterTypeVector(numAtoms, -1);
-  vector<int> atomClusterSizeVector(numAtoms, -1);
+      // get 1NN + 2NN neighbors
+      auto nnUpToSecond = config_.GetNeighborLatticeIdsUpToOrder(center, 2);
 
-  int clusterId = 1;
+      // add all NN (B2 or not) into the cluster
+      for (size_t nnId : nnUpToSecond)
+      {
+        currentCluster.insert(nnId);
+      }
 
-  for (const auto &cluster : clusters_)
-  {
-    int clusterSize = cluster.size();
+      // BFS expansion: only through real B2 sites
+      for (size_t nnId : nnUpToSecond)
+      {
+        if (visitedB2.count(nnId))
+          continue;
 
-    // If vacancy is part of the cluster, we exclude it from the count
-    if (cluster.find(vacancyId) != cluster.end())
-    {
-      clusterSize -= 1;
+        if (isB2(nnId))
+        {
+          visitedB2.insert(nnId);
+          bfsQueue.push(nnId);
+        }
+      }
     }
 
-    for (auto atomId : cluster)
-    {
-      atomClusterTypeVector[atomId] = clusterId;
-      atomClusterSizeVector[atomId] = clusterSize;
-    }
-
-    clusterSizeVector.emplace_back(clusterSize);
-
-    clusterId++;
+    b2ClusterVector_.push_back(std::move(currentCluster));
   }
-
-  auxiliaryList["clusterType"] = atomClusterTypeVector;
-  auxiliaryList["clusterSize"] = atomClusterSizeVector;
-  */
 }
 
-
-
-bool B2Cluster::growB2Cluster(size_t atomId,
-                                    unordered_set<size_t> &cluster)
+bool B2Cluster::isB2(const size_t latticeId)
 {
-  if (!visited_.emplace(atomId).second)
+  const Element centralElement = config_.GetElementOfLattice(latticeId);
+
+  if (centralElement == Element("X"))
     return false;
 
-  bool isB2Center = B2OrderParameter::isB2Ordered(config_, atomId);
+  const auto firstNN = config_.GetNeighborLatticeIdVectorOfLattice(latticeId, 1);
 
-  if (!isB2Center)
+  // The 1NN element type must be uniform and opposite to central
+  const Element firstNNElement = config_.GetElementOfLattice(firstNN[0]);
+
+  if (firstNNElement == centralElement)
     return false;
 
-  cluster.insert(atomId);
-  // First nearest neighbours
-  const auto neighbors = config_.GetNeighborAtomIdVectorOfAtom(atomId, 1);
-
-  for (size_t nId : neighbors)
+  for (size_t nnId : firstNN)
   {
-    cluster.insert(nId); // Include all neighbors regardless of order
-    if (B2OrderParameter::isB2Ordered(config_, nId))
-    {
-      growB2Cluster(nId, cluster); // Recurse on ordered neighbors only
-    }
+    if (config_.GetElementOfLattice(nnId) != firstNNElement)
+      return false;
+  }
+
+  const auto secondNN = config_.GetNeighborLatticeIdVectorOfLattice(latticeId, 2);
+
+  for (size_t nnId : secondNN)
+  {
+    if (config_.GetElementOfLattice(nnId) != centralElement)
+      return false;
   }
   return true;
-}
-
-unordered_set<size_t> B2Cluster::mergeIfIntersect(
-    const unordered_set<size_t> &set1,
-    const unordered_set<size_t> &set2)
-{
-
-  for (const size_t &val : set1)
-  {
-    if (set2.count(val))
-    {
-      unordered_set<size_t> result = set1;
-      result.insert(set2.begin(), set2.end());
-      return result;
-    }
-  }
-  return {};
-}
-
-void B2Cluster::mergeAllClusters()
-{
-  for (size_t i = 0; i < clusters_.size(); ++i)
-  {
-    for (size_t j = i + 1; j < clusters_.size();)
-    {
-      auto combined = mergeIfIntersect(clusters_[i], clusters_[j]);
-      if (!combined.empty())
-      {
-        clusters_.erase(clusters_.begin() + j);
-        clusters_.erase(clusters_.begin() + i);
-        clusters_.push_back(combined);
-        i = static_cast<size_t>(-1);
-        break;
-      }
-      else
-      {
-        ++j;
-      }
-    }
-  }
 }
