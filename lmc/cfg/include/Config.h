@@ -37,6 +37,8 @@
 #include <boost/iostreams/filter/bzip2.hpp>
 #include <boost/iostreams/stream_buffer.hpp>
 #include <boost/iostreams/device/file.hpp>
+#include <random>
+
 // #include "Atom.hpp"
 
 using namespace std;
@@ -321,6 +323,9 @@ public:
   /*! \brief Write the configuration to a file.
    *  \param filename  The name of the file to write the configuration to.
    */
+  static Config GenerateAlloySupercell(size_t supercell_size, double lattice_param, std::string structure_type, const std::vector<std::string> &element_vector, const std::vector<double> &composition_vector, unsigned seed);
+  
+  
   static void WriteConfig(const std::string &filename,
                           const Config &config_out);
 

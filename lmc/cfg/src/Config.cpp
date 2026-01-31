@@ -1230,6 +1230,66 @@ Config Config::GenerateSupercell(
   return supercell;
 }
 
+
+
+Config Config::GenerateAlloySupercell(
+    size_t supercell_size,
+    double lattice_param,
+    std::string structure_type,
+    const std::vector<std::string> &element_vector,
+    const std::vector<double> &composition_vector,
+    unsigned seed)
+{
+
+  string baseElement;
+
+  for (int i = 0; i < composition_vector.size(); i++)
+  {
+    if (composition_vector[i] != 0)
+    {
+      baseElement = element_vector[i];
+      break;
+    }
+  }
+
+  // First element in the element vector is the base element
+  auto base_supercell = GenerateSupercell(supercell_size,
+                                          lattice_param,
+                                          baseElement,
+                                          structure_type);
+
+  auto atom_vector = base_supercell.GetAtomVector();
+  auto num_atoms = base_supercell.GetNumAtoms();
+
+  int start_index = 0;
+
+  for (int el = 1; el < composition_vector.size(); ++el)
+  {
+    int num_atoms_el = composition_vector[el] * num_atoms / 100;
+
+    // std::cout << num_atoms_el << std::endl;
+
+    for (int i = start_index; i < start_index + num_atoms_el; ++i)
+    {
+      atom_vector[i] = Element(element_vector[el]);
+    }
+    start_index += num_atoms_el;
+  }
+
+  std::mt19937 mersenne_twister_rng_(seed);
+
+  std::shuffle(atom_vector.begin(), atom_vector.end(), mersenne_twister_rng_);
+
+  Config supercell = Config{base_supercell.GetBasis(),
+                            base_supercell.GetRelativePositionMatrix(),
+                            atom_vector};
+
+  supercell.ReassignLattice();
+  supercell.Wrap();
+
+  return supercell;
+}
+
 void Config::WriteConfig(const std::string &filename, const Config &config_out)
 {
   WriteConfigExtended(filename, config_out, {});
