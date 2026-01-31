@@ -1,12 +1,16 @@
 simulation_method CanonicalMcSerial
-json_coefficients_filename quartic_coefficients.json
-config_filename start.cfg
-#map_filename map0.txt
-log_dump_steps                  100000
-config_dump_steps             10000000
-maximum_steps                100000000
-thermodynamic_averaging_steps 10000000
-temperature 800
-element_set Al Mg Zn
+# Change to correct coefficient file path, look into documentation for more details for format
+json_coefficients_filename ../ce_fitted_coefficients.json
+# Initial Structure
+config_filename start_structure.cfg.gz
+temperature 1400
+structure_type BCC
+log_dump_steps 100
+config_dump_steps 100
+maximum_steps 1000
+supercell_size 20
+cutoffs 3 4 5
+thermodynamic_averaging_steps 100
+lattice_param 3.2
 restart_steps 0
 restart_energy 0

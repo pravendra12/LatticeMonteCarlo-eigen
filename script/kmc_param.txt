@@ -1,14 +1,22 @@
-simulation_method KineticMcChainOmpi
-json_coefficients_filename quartic_coefficients.json
-config_filename lowest_energy.cfg
-#map_filename map0.txt
-log_dump_steps                  100000
-config_dump_steps              1000000
-maximum_steps         1000000000000000
-thermodynamic_averaging_steps 10000000
-temperature 800
+simulation_method KineticMcFirstMpi
+# Change to correct coefficient file path, look into documentation for more details for format
+json_coefficients_filename ../ce_fitted_coefficients.json
+# Initial Structure
+config_filename start_structure.cfg.gz 
+# Cooling Profile
+# time_temperature_filename time_temp_profile.json
+structure_type BCC
+log_dump_steps                1000
+thermodynamic_averaging_steps 1000
+config_dump_steps             100000
+maximum_steps                 10000000
+max_cluster_size 3
+max_bond_order 3
+temperature 600
+cutoffs 3, 4, 5
+supercell_size 4
+lattice_param 3.2
 restart_steps 0
 restart_energy 0
-restart_time 0
 rate_corrector false
-vacancy_trajectory 0 0 0
+vacancy_trajectory 0.0 0.0 0.0

@@ -1,16 +1,18 @@
 simulation_method SimulatedAnnealing
-json_coefficients_filename predictor_file_WTa.json
-config_filename start_W50Ta50_20x20x20.cfg
-initial_temperature 2000
+# Change to correct coefficient file path, look into documentation for more details for format
+json_coefficients_filename ../ce_fitted_coefficients.json
+# Initial Structure
+config_filename start_structure.cfg.gz
+initial_temperature 2500
 structure_type BCC
-log_dump_steps 10
-config_dump_steps 10
-maximum_steps 100
+log_dump_steps 100000
+config_dump_steps 1000000
+maximum_steps 1000000000
 max_cluster_size 3
 max_bond_order 3
-cutoffs 3.3, 4.7, 5.6
-supercell_size 5
-lattice_param 3.4
+lattice_param 3.2
+cutoffs 3, 4, 5
+supercell_size 20
 restart_steps 0
 restart_energy 0
 
