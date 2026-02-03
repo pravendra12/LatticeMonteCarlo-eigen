@@ -27,63 +27,67 @@
 #include "ClusterExpansionParameters.h"
 #include "KineticMcFirstOmp.h"
 #include "AnsysFlags.h"
+#include "WidomInsertion.h"
 
 using namespace std;
 
-namespace api {
+namespace api
+{
 
-  /*! \brief Prints the details of the given simulation parameters. 
-   *  \param parameter : The `Parameter` object containing simulation settings to 
+  /*! \brief Prints the details of the given simulation parameters.
+   *  \param parameter : The `Parameter` object containing simulation settings to
    *                     be printed.
    */
   void Print(const Parameter &parameter);
-  
+
   /*! \brief Executes a Monte Carlo simulation using the provided parameters.
-   *  \param parameter : The `Parameter` object containing simulation settings to 
+   *  \param parameter : The `Parameter` object containing simulation settings to
    *                     be printed.
    */
   void Run(const Parameter &parameter);
-  
-  /*! \brief Constructs a serial implementation of a Canonical Monte Carlo 
+
+  /*! \brief Constructs a serial implementation of a Canonical Monte Carlo
    *         simulation.
-   *  \param parameter : The `Parameter` object containing the configuration for 
+   *  \param parameter : The `Parameter` object containing the configuration for
    *                     the simulation.
-   *  \return          : A `mc::CanonicalMcSerial` object configured with the 
+   *  \return          : A `mc::CanonicalMcSerial` object configured with the
    *                     provided parameters.
    */
   void RunCanonicalMcSerialFromParameter(const Parameter &parameter);
-  
-  /*! \brief Constructs a first-order MPI implementation of a Kinetic Monte Carlo 
+
+  /*! \brief Constructs a first-order MPI implementation of a Kinetic Monte Carlo
    *         simulation.
-   *  \param parameter : The `Parameter` object containing the configuration for 
+   *  \param parameter : The `Parameter` object containing the configuration for
    *                     the simulation.
-   *  \return          : A `mc::KineticMcFirstMpi` object configured with the 
+   *  \return          : A `mc::KineticMcFirstMpi` object configured with the
    *                     provided parameters.
    */
   void RunKineticMcFirstMpiFromParameter(const Parameter &parameter);
 
   void RunKineticMcFirstOmpFromParameter(const Parameter &parameter);
 
-  /*! \brief Constructs a Second-order OMP implementation of a Kinetic Monte Carlo 
+  /*! \brief Constructs a Second-order OMP implementation of a Kinetic Monte Carlo
    *         simulation.
-   *  \param parameter : The `Parameter` object containing the configuration for 
+   *  \param parameter : The `Parameter` object containing the configuration for
    *                     the simulation.
-   *  \return          : A `mc::KineticMcChainOmpi` object configured with the 
+   *  \return          : A `mc::KineticMcChainOmpi` object configured with the
    *                     provided parameters.
    */
   void RunKineticMcChainOmpiFromParameter(const Parameter &parameter);
-  
-  /*! \brief Constructs a Iterator from parameters for the analysis of the 
+
+  /*! \brief Constructs a Iterator from parameters for the analysis of the
    *         structure generated from KMC, for now only SRO analysis.
-   *  \param parameter : The `Parameter` object containing the configuration for 
+   *  \param parameter : The `Parameter` object containing the configuration for
    *                     the simulation.
-   *  \return          : A `ansys::Traverse` object configured with the 
+   *  \return          : A `ansys::Traverse` object configured with the
    *                     provided parameters.
    */
-  ansys::Traverse BuildIteratorFromParameter(const Parameter &parameter);
+  Traverse BuildIteratorFromParameter(const Parameter &parameter);
 
   void RunSimulatedAnnealingFromParameter(const Parameter &parameter);
 
+  void RunWidomInsertion(const Parameter &parameter);
+
 } // api
 
-#endif //LMC_API_INCLUDE_HOME_H_
+#endif // LMC_API_INCLUDE_HOME_H_

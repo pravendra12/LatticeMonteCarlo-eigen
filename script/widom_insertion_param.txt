@@ -1,0 +1,7 @@
+simulation_method WidomInsertion
+json_coefficients_filename ../ce_fitted_coefficients.json
+initial_steps 0
+increment_steps 10000
+ghost_element X
+lattice_param 3.2
+structure_type BCC

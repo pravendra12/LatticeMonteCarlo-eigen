@@ -4,7 +4,7 @@ simulation_method Ansys
 log_type simulated_annealing
 config_type config
 #config_type xyz
-cutoffs 3.20, 4.6, 5.4
+cutoffs 3, 4, 5
 initial_steps 0
 increment_steps 10000
 enable_sro true

@@ -268,6 +268,11 @@ namespace api
           enable_b2_cluster_ansys_ = false;
         }
       }
+
+      else if (segs[0] == "ghost_element")
+      {
+        ghost_element_ = std::string(segs[1]);
+      }
     }
     ifs.close();
   }

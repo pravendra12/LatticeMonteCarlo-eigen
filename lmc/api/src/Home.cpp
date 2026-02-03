@@ -14,7 +14,6 @@
 
 namespace api
 {
-
   void Print(const Parameter &parameter)
   {
     cout << "Parameters" << endl;
@@ -469,19 +468,19 @@ namespace api
     cout << "Simulation Completed" << endl;
   }
 
-  ansys::Traverse BuildIteratorFromParameter(const Parameter &parameter)
+  Traverse BuildIteratorFromParameter(const Parameter &parameter)
   {
     AnsysFlags ansysFlags;
     ansysFlags.SRO = parameter.enable_sro_;
     ansysFlags.B2OrderParam = parameter.enable_b2_order_param_;
     ansysFlags.B2ClusterAnsys = parameter.enable_b2_cluster_ansys_;
 
-    return ansys::Traverse{parameter.initial_steps_,
-                           parameter.increment_steps_,
-                           parameter.cutoffs_,
-                           ansysFlags,
-                           parameter.log_type_,
-                           parameter.config_type_};
+    return Traverse{parameter.initial_steps_,
+                    parameter.increment_steps_,
+                    parameter.cutoffs_,
+                    ansysFlags,
+                    parameter.log_type_,
+                    parameter.config_type_};
   }
 
   void RunSimulatedAnnealingFromParameter(const Parameter
@@ -543,4 +542,64 @@ namespace api
     simulatedAnnealing.Simulate();
     cout << "Simulation Completed" << endl;
   }
+
+  void RunWidomInsertion(const Parameter &parameter)
+  {
+    // Currently only handle the cmc output with cfg.gz files; later can be
+    // generalized or use the `WidomInsertion` function directly.
+
+    Config config;
+
+    try
+    {
+      // Supported formats (per your note): .cfg, .POSCAR, .cfg.gz, .cfg.bz2, .POSCAR.gz, .POSCAR.bz2
+      // Starting file must exist.
+
+      std::string startConfigFile =
+          std::to_string(parameter.initial_steps_) + ".cfg.gz";
+
+      if (!fs::exists(startConfigFile))
+      {
+        throw std::runtime_error(
+            "Start config file does not exist: " + startConfigFile);
+      }
+
+      config = Config::ReadConfig(startConfigFile);
+    }
+    catch (const std::exception &e)
+    {
+      std::cerr << "[Widom] Failed to read start config at step "
+                << parameter.initial_steps_ << ": " << e.what() << "\n";
+      throw;
+    }
+
+    // Read CE Parameters
+    ClusterExpansionParameters ceParams(parameter.json_coefficients_filename_);
+
+    // Used to update the symmetric CE
+    double maxClusterCutoff = ceParams.GetMaxClusterCutoff();
+    config.UpdateNeighborList({maxClusterCutoff});
+
+    // Generate a small config for declaring symCE
+    const size_t supercellSize = 2;
+
+    auto primConfig = Config::GenerateSupercell(
+        supercellSize,
+        parameter.lattice_param_,
+        "X", // Does not matter as the lattice param and structure type is important
+        parameter.structure_type_);
+
+    // Declare Symmetric CE
+    SymmetricCEPredictor symCEEnergyPredictor(
+        ceParams,
+        config,
+        primConfig);
+
+    WidomInsertionHelper(
+        parameter.initial_steps_,
+        parameter.increment_steps_,
+        symCEEnergyPredictor,
+        Element(parameter.ghost_element_));
+  }
+
 }
