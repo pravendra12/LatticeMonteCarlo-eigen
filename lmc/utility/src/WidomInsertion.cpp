@@ -85,11 +85,15 @@ void WidomInsertionHelper(
 
       auto widomInsertionRecords = WidomInsertion(cfg, symCEPredictor, ghostElement);
 
-      string outPath = "widomInsertion/" + to_string(idx) + ".txt";
-      ofstream outfile(outPath);
-      if (!outfile)
+      std::string outPath = "widomInsertion/" + std::to_string(idx) + ".txt.gz";
+
+      boost::iostreams::filtering_ostream outfile;
+      outfile.push(boost::iostreams::gzip_compressor());
+      outfile.push(boost::iostreams::file_sink(outPath, std::ios_base::binary));
+
+      if (!outfile.good())
       {
-        throw runtime_error("Cannot open output file: " + outPath);
+        throw std::runtime_error("Cannot open output file: " + outPath);
       }
 
       outfile << "latticeId\telement\\tdeltaE_ghost_insert\n";
@@ -101,6 +105,8 @@ void WidomInsertionHelper(
                 << entry.originalElement.GetElementString() << "\t"
                 << entry.localFormationEnergyChange << "\n";
       }
+
+      outfile.flush();
 
       cout << "Done for " << configFile << endl;
     }
