@@ -24,7 +24,7 @@ struct WidomInsertionRecord
 {
   size_t latticeId;
   Element originalElement;
-  double localFormationEnergy;
+  double localFormationEnergyChange;
 };
 
 /**

@@ -178,7 +178,7 @@ double SymmetricCEPredictor::ComputeLocalFormationEnergyOfSite(
       canonicalSortedLatticeIds,
       localOrbitsEncoding_);
 
-  cout << clusterVector.size() << endl;
+  // cout << clusterVector.size() << endl;
 
   // E = J.Φ_α
   double energyValue = GetTotalFormationEnergy(clusterVector);

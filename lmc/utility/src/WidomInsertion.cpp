@@ -13,18 +13,24 @@ vector<WidomInsertionRecord> WidomInsertion(
   {
     auto elementAtLatticeId = config.GetElementOfLattice(latticeId);
 
+    double localFormationEnergyBefore =
+        symCEPredictor.ComputeLocalFormationEnergyOfSite(config,
+                                                         latticeId);
+
     // assign the ghostElement
     config.SetElementOfLattice(latticeId, ghostElement);
 
     // compute the local formation energy
-    double localFormationEnergy =
+    double localFormationEnergyAfter =
         symCEPredictor.ComputeLocalFormationEnergyOfSite(config,
                                                          latticeId);
 
     // reassign the previous element
     config.SetElementOfLattice(latticeId, elementAtLatticeId);
 
-    records.push_back({latticeId, elementAtLatticeId, localFormationEnergy});
+    double localFormationEnergyChange = localFormationEnergyAfter - localFormationEnergyBefore;
+
+    records.push_back({latticeId, elementAtLatticeId, localFormationEnergyChange});
   }
 
   return records;
@@ -86,15 +92,17 @@ void WidomInsertionHelper(
         throw runtime_error("Cannot open output file: " + outPath);
       }
 
-      outfile << "latticeId\telement\tlocalFormationEnergy\n";
+      outfile << "latticeId\telement\\tdeltaE_ghost_insert\n";
       outfile << setprecision(16);
 
       for (const auto &entry : widomInsertionRecords)
       {
         outfile << entry.latticeId << "\t"
                 << entry.originalElement.GetElementString() << "\t"
-                << entry.localFormationEnergy << "\n";
+                << entry.localFormationEnergyChange << "\n";
       }
+
+      cout << "Done for " << configFile << endl;
     }
     catch (const exception &e)
     {

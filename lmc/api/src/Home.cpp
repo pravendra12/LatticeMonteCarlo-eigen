@@ -148,6 +148,22 @@ namespace api
       cout << "enable_b2_order_param: " << parameter.enable_b2_order_param_ << endl;
       cout << "enable_b2_cluster_ansys: " << parameter.enable_b2_cluster_ansys_ << endl;
     }
+    else if (parameter.method == "WidomInsertion")
+    {
+      // General configuration information
+      cout << "json_coefficients_filename: "
+           << parameter.json_coefficients_filename_ << endl;
+      cout << "ghost_element: "
+           << parameter.ghost_element_ << endl;
+      // Lattice and structure information
+      cout << "lattice_param: "
+           << parameter.lattice_param_ << endl;
+      cout << "structure_type: "
+           << parameter.structure_type_ << endl;
+
+      cout << "initial_steps: " << parameter.initial_steps_ << endl;
+      cout << "increment_steps: " << parameter.increment_steps_ << endl;
+    }
   }
 
   void Run(const Parameter &parameter)
@@ -176,6 +192,10 @@ namespace api
     else if (parameter.method == "SimulatedAnnealing")
     {
       api::RunSimulatedAnnealingFromParameter(parameter);
+    }
+    else if (parameter.method == "WidomInsertion")
+    {
+      api::RunWidomInsertion(parameter);
     }
   }
 
@@ -601,5 +621,4 @@ namespace api
         symCEEnergyPredictor,
         Element(parameter.ghost_element_));
   }
-
 }
