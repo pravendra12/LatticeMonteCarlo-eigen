@@ -39,7 +39,45 @@
 #include <boost/iostreams/device/file.hpp>
 #include <random>
 
-// #include "Atom.hpp"
+/*
+ * IMPORTANT: CELL-BASIS AND NEIGHBOR-LIST CONVENTIONS
+ *
+ * Config stores lattice vectors as COLUMNS of basis_:
+ *
+ *     basis_.col(0) = a;
+ *     basis_.col(1) = b;
+ *     basis_.col(2) = c;
+ *
+ * Therefore:
+ *
+ *     Cartesian  = basis_ * fractional;
+ *     fractional = basis_.inverse() * Cartesian;
+ *
+ * File formats such as POSCAR, CFG, and extended XYZ list the lattice
+ * vectors consecutively as a, b, and c. Their parsed row-based matrices
+ * must be transposed when converting to the internal Config convention,
+ * and basis_ must be transposed or written column-by-column on output.
+ *
+ * This transpose error is hidden for diagonal cubic cells but produces
+ * incorrect coordinates and neighbor lists for skewed/non-cubic cells.
+ *
+ * For non-orthogonal cells:
+ *   - Linked-cell dimensions must use perpendicular cell heights obtained
+ *     from basis_.inverse().transpose(), not lattice-vector lengths.
+ *   - Minimum-image displacement must be selected using Cartesian distance,
+ *     not by independently wrapping each fractional component.
+ *   - Neighbor lists are DISJOINT shells because only the first matching
+ *     sorted cutoff is used.
+ *
+ * Do not modify the basis convention, file readers/writers, minimum-image
+ * routine, or neighbor-list construction independently; all must remain
+ * consistent with the equations above.
+ *
+ * NOTE: The current minimum-image routine checks the 27 images surrounding
+ * the component-wise wrapped image. This is suitable for normal simulation
+ * cells but may require a more general closest-lattice-vector search for
+ * extremely skewed or poorly reduced cells.
+ */
 
 using namespace std;
 
@@ -171,7 +209,7 @@ public:
    *  \param atomId  The atom id of the atom.
    *  \return         The lattice id for the atom.
    */
-  [[nodiscard]]size_t GetLatticeIdOfAtom(size_t atomId) const;
+  [[nodiscard]] size_t GetLatticeIdOfAtom(size_t atomId) const;
 
   /*! \brief Query for the cartesian position of a lattice site. //prav: relative position of lattice
    *  \param lattice_id  The lattice id of the lattice site.
@@ -201,11 +239,11 @@ public:
 
   std::vector<size_t> GetSortedLatticeVectorStateOfPair(
       const std::pair<size_t, size_t> &lattice_id_pair, const size_t &max_bond_order) const;
-  
+
   // Returns the sorted lattice vector including the lattice pair
   std::vector<size_t> GetSortedLatticeVectorStateWithPair(
-    const std::pair<size_t, size_t> &lattice_id_jump_pair, 
-    const size_t &max_bond_order) const;
+      const std::pair<size_t, size_t> &lattice_id_jump_pair,
+      const size_t &max_bond_order) const;
 
   /*! \brief Computes the center position of a lattice pair while accounting for
                periodic boundary conditions.
@@ -244,10 +282,19 @@ public:
 
   [[nodiscard]] Eigen::Vector3d GetNormalizedDirection(size_t referenceId, size_t latticeId) const;
 
-  /*! \brief Query for the relative distance vector between two lattice.
-   *  \param lattice_id1  The lattice id of the first lattice.
-   *  \param lattice_id2  The lattice id of the second lattice.
-   *  \return             The relative distance vector between the two lattice.
+  /**
+   * \brief Returns the minimum-image fractional displacement between two sites.
+   *
+   * Computes the fractional vector from lattice_id1 to lattice_id2 and searches
+   * the neighboring periodic images around the component-wise wrapped image.
+   * The image with the smallest Cartesian distance, calculated using
+   * `basis_ * fractional_difference`, is returned.
+   *
+   * This approach supports orthogonal and skewed non-cubic cells.
+   *
+   * \param lattice_id1 Index of the starting lattice site.
+   * \param lattice_id2 Index of the ending lattice site.
+   * \return Minimum-image displacement in fractional coordinates.
    */
   [[nodiscard]] Eigen::Vector3d GetRelativeDistanceVectorLattice(size_t lattice_id1, size_t lattice_id2) const;
 
@@ -274,10 +321,56 @@ public:
    */
   void LatticeJump(const std::pair<size_t, size_t> &lattice_id_jump_pair);
 
-  /*! \brief Update the neighbor list of the configuration with the given cutoffs.
-   *  \param cutoffs  The cutoffs to update the neighbor list.
+  /**
+   * \brief Builds neighbor lists for orthogonal and non-orthogonal cells.
+   *
+   * Uses a linked-cell search based on the perpendicular cell heights obtained
+   * from the inverse-transpose basis. Fractional coordinates are assigned to
+   * spatial bins, nearby bins are searched, and candidate distances are computed
+   * using the minimum-image fractional displacement.
+   *
+   * The cutoff values are sorted internally. The resulting lists represent
+   * disjoint distance shells:
+   *
+   *   list 0: distance < cutoff[0]
+   *   list 1: cutoff[0] <= distance < cutoff[1]
+   *   ...
+   *
+   * The internal basis convention is:
+   *
+   *   Cartesian position = basis_ * fractional position
+   *
+   * where the lattice vectors are stored as columns of basis_.
+   *
+   * \param cutoffs Positive Cartesian distance cutoffs.
+   * \throws std::invalid_argument If no cutoff is supplied.
+   * \throws std::runtime_error If a non-periodic coordinate lies outside [0,1).
    */
   void UpdateNeighborList(std::vector<double> cutoffs);
+
+  /*! \brief Generate the supercell configuration.
+   *  \param supercell_size  Size of the Supercell.
+   *  \param lattice_param   Lattice Parameter of the unit cell.
+   *  \param element_symbol  Element Symbol eg. "Al".
+   *  \param structure_type  Type of Structure  "BCC" or "FCC".
+   *  \return                The configuration of the generated structure.
+   */
+  static Config GenerateSupercell(
+      size_t supercell_size,
+      double lattice_param,
+      const std::string &element_symbol,
+      const std::string &structure_type);
+
+  /*! \brief Write the configuration to a file.
+   *  \param filename  The name of the file to write the configuration to.
+   */
+  static Config GenerateAlloySupercell(
+      size_t supercell_size,
+      double lattice_param,
+      std::string structure_type,
+      const std::vector<std::string> &element_vector,
+      const std::vector<double> &composition_vector,
+      unsigned seed);
 
   /*! \brief Read the configuration from a lattice file, element file and map file.
    *  \param lattice_filename  The name of the lattice file.
@@ -311,21 +404,6 @@ public:
    */
   static Config ReadConfig(const std::string &filename);
 
-  /*! \brief Generate the supercell configuration.
-   *  \param supercell_size  Size of the Supercell.
-   *  \param lattice_param   Lattice Parameter of the unit cell.
-   *  \param element_symbol  Element Symbol eg. "Al".
-   *  \param structure_type  Type of Structure  "BCC" or "FCC".
-   *  \return                The configuration of the generated structure.
-   */
-  static Config GenerateSupercell(size_t supercell_size, double lattice_param, const std::string &element_symbol, const std::string &structure_type);
-
-  /*! \brief Write the configuration to a file.
-   *  \param filename  The name of the file to write the configuration to.
-   */
-  static Config GenerateAlloySupercell(size_t supercell_size, double lattice_param, std::string structure_type, const std::vector<std::string> &element_vector, const std::vector<double> &composition_vector, unsigned seed);
-  
-  
   static void WriteConfig(const std::string &filename,
                           const Config &config_out);
 
@@ -358,18 +436,6 @@ public:
       const Config &config_out,
       const std::map<std::string, VectorVariant> &auxiliary_lists,
       const std::map<std::string, ValueVariant> &global_list);
-
-  // /*! \brief Write the lattice configuration to a file.
-  //  *         Outputs a lattice configuration with bonds up to the specified maximum order.
-  //  *         This function writes the lattice in an easily readable format, storing
-  //  *         bond orders and other lattice properties for further analysis or visualization.
-  //  *  \param filename       The name of the file to write the lattice configuration to.
-  //  *  \param max_bond_order: The maximum bond order to include in the written configuration.
-  //  */
-  void WriteLattice(const std::string &filename, size_t &max_bond_order) const;
-
-  Config ExtractLocalSupercell(const std::pair<size_t,size_t>& latticeJumpPair, size_t supercellSize, double latticeParam) const;
-  Config ExtractLocalSupercellGrok(const std::pair<size_t, size_t> &latticeJumpPair, size_t supercellSize, double latticeParam) const;
 
 private:
   /*! \brief Sort lattice sites by the positions (x, y, z)

@@ -25,6 +25,9 @@ struct WidomInsertionRecord
   size_t latticeId;
   Element originalElement;
   double localFormationEnergyChange;
+  vector<string> firstNNElements;
+  vector<string> secondNNElements;
+  vector<string> thirdNNElements;
 };
 
 /**

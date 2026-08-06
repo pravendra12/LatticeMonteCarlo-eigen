@@ -12,13 +12,6 @@
 
 #include "Config.h"
 
-/*
- * EXPERIMENTAL ROW-BASIS CONVENTION
- * basis_.row(0)=a, basis_.row(1)=b, basis_.row(2)=c.
- * Cartesian columns = basis_.transpose() * fractional columns.
- * Fractional columns = basis_.inverse().transpose() * Cartesian columns.
- */
-
 Config::Config() = default;
 
 Config::Config(Eigen::Matrix3d basis,
@@ -36,7 +29,7 @@ Config::Config(Eigen::Matrix3d basis,
                              std::to_string(atom_vector_.size()));
   }
 
-  cartesian_position_matrix_ = basis_.transpose() * relative_position_matrix_;
+  cartesian_position_matrix_ = basis_ * relative_position_matrix_;
   for (size_t id = 0; id < atom_vector_.size(); ++id)
   {
     // id here is also lattice_id
@@ -93,7 +86,6 @@ const Eigen::Matrix3Xd &Config::GetRelativePositionMatrix() const
   return relative_position_matrix_;
 }
 
-/*
 size_t Config::GetCentralAtomLatticeId() const
 {
 
@@ -110,78 +102,6 @@ size_t Config::GetCentralAtomLatticeId() const
   // Exit the program if no match is found
   std::cerr << "Error: Central atom not found in the lattice!" << std::endl;
   exit(EXIT_FAILURE); // Exit with failure status
-}
-  */
-
-size_t Config::GetCentralAtomLatticeId() const
-{
-  if (relative_position_matrix_.cols() == 0)
-  {
-    throw std::runtime_error(
-        "Cannot find central lattice site: configuration is empty.");
-  }
-
-  constexpr double tolerance = 1e-6;
-
-  const Eigen::Vector3d centralRelativePosition{
-      0.5,
-      0.5,
-      0.5};
-
-  const Eigen::Vector3d centralCartesianPosition =
-      basis_ * centralRelativePosition;
-
-  size_t nearestLatticeId = 0;
-
-  double minimumDistanceSquared =
-      std::numeric_limits<double>::max();
-
-  for (Eigen::Index latticeId = 0;
-       latticeId < relative_position_matrix_.cols();
-       ++latticeId)
-  {
-    const Eigen::Vector3d relativePosition =
-        relative_position_matrix_.col(latticeId);
-
-    // Return immediately when an exact central site exists.
-    if (relativePosition.isApprox(
-            centralRelativePosition,
-            tolerance))
-    {
-      return static_cast<size_t>(latticeId);
-    }
-
-    // Cartesian distance is important for non-cubic cells.
-    const Eigen::Vector3d displacement =
-        cartesian_position_matrix_.col(latticeId) -
-        centralCartesianPosition;
-
-    const double distanceSquared =
-        displacement.squaredNorm();
-
-    if (distanceSquared < minimumDistanceSquared)
-    {
-      minimumDistanceSquared = distanceSquared;
-      nearestLatticeId = static_cast<size_t>(latticeId);
-    }
-  }
-
-  std::cerr
-      << "Warning: No lattice site exists exactly at the cell center.\n"
-      << "Using nearest lattice site instead.\n"
-      << "Selected lattice ID: "
-      << nearestLatticeId << '\n'
-      << "Relative position: "
-      << relative_position_matrix_.col(nearestLatticeId).transpose()
-      << '\n'
-      << "Cartesian position: "
-      << cartesian_position_matrix_.col(nearestLatticeId).transpose()
-      << '\n'
-      << "Distance from center: "
-      << std::sqrt(minimumDistanceSquared)
-      << '\n';
-
-  return nearestLatticeId;
 }
 
 size_t Config::GetVacancyAtomId() const
@@ -617,7 +537,7 @@ void Config::Wrap()
       }
     }
   }
-  cartesian_position_matrix_ = basis_.transpose() * relative_position_matrix_;
+  cartesian_position_matrix_ = basis_ * relative_position_matrix_;
 }
 
 void Config::SetElementOfAtom(size_t atom_id, Element element_type)
@@ -711,7 +631,7 @@ void Config::ReassignLattice()
   {
     relative_position_matrix_.col(static_cast<int>(i)) = new_lattice_id_vector[i].first;
   }
-  cartesian_position_matrix_ = basis_.transpose() * relative_position_matrix_;
+  cartesian_position_matrix_ = basis_ * relative_position_matrix_;
   lattice_to_atom_hashmap_ = new_lattice_to_atom_hashmap;
   atom_to_lattice_hashmap_ = new_atom_to_lattice_hashmap;
 }
@@ -830,7 +750,7 @@ Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(
             raw_difference - image_shift.cast<double>();
 
         const double candidate_distance_squared =
-            (basis_.transpose() * candidate_difference).squaredNorm();
+            (basis_ * candidate_difference).squaredNorm();
 
         if (candidate_distance_squared < best_distance_squared)
         {
@@ -845,6 +765,7 @@ Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(
 }
 
 */
+
 
 // This function should work for the non-cubic supercell as well
 // Efficient implementation
@@ -871,46 +792,38 @@ Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(
   }
 
   /*
-   * Key optimization for row-stored lattice vectors:
-   * basis_.transpose() * (raw_difference - image_shift)
-   * = basis_.transpose() * raw_difference
-   *   - image_shift(0) * basis_.row(0).transpose()
-   *   - image_shift(1) * basis_.row(1).transpose()
-   *   - image_shift(2) * basis_.row(2).transpose()
+   * Key optimization: basis_ * (raw_difference - image_shift)
+   *                  = basis_ * raw_difference
+   *                    - image_shift(0) * basis_.col(0)
+   *                    - image_shift(1) * basis_.col(1)
+   *                    - image_shift(2) * basis_.col(2)
    *
    * Since image_shift = central_shift + (sx, sy, sz), we can
    * precompute the Cartesian vector at (sx,sy,sz) = (0,0,0) once,
    * then reach every other candidate via cheap vector addition
    * instead of a fresh 3x3 matrix-vector multiply (9 mults + 6
-   * adds) for each of the 27 candidates. The rows of basis_ are
-   * the lattice vectors, so cache them as Cartesian column vectors.
-
+   * adds) for each of the 27 candidates. The columns of basis_
+   * are free to read (no copy needed for the multiply-avoidance,
+   * but we cache them as local references for clarity/perf).
    */
-  const Eigen::Vector3d basis_vec0 = basis_.row(0).transpose();
-  const Eigen::Vector3d basis_vec1 = basis_.row(1).transpose();
-  const Eigen::Vector3d basis_vec2 = basis_.row(2).transpose();
+  const Eigen::Vector3d &basis_col0 = basis_.col(0);
+  const Eigen::Vector3d &basis_col1 = basis_.col(1);
+  const Eigen::Vector3d &basis_col2 = basis_.col(2);
 
-  const Eigen::Vector3d cart_raw = basis_.transpose() * raw_difference;
+  const Eigen::Vector3d cart_raw = basis_ * raw_difference;
 
   const Eigen::Vector3d cart_central_shift =
-      static_cast<double>(central_shift(0)) * basis_vec0 +
-      static_cast<double>(central_shift(1)) * basis_vec1 +
-      static_cast<double>(central_shift(2)) * basis_vec2;
+      static_cast<double>(central_shift(0)) * basis_col0 +
+      static_cast<double>(central_shift(1)) * basis_col1 +
+      static_cast<double>(central_shift(2)) * basis_col2;
 
   // Cartesian position at (sx, sy, sz) = (0, 0, 0), i.e. the
   // component-wise-wrapped candidate.
   const Eigen::Vector3d cart_base = cart_raw - cart_central_shift;
 
-  // Eigen::Vector3d best_difference = raw_difference;
-  // Eigen::Vector3d best_cart = cart_base;
-  // double best_distance_squared = cart_base.squaredNorm();
-
-  // The initial candidate is the component-wise wrapped image.
-  Eigen::Vector3d best_difference =
-      raw_difference - central_shift.cast<double>();
-
-  double best_distance_squared =
-      cart_base.squaredNorm();
+  Eigen::Vector3d best_difference = raw_difference;
+  Eigen::Vector3d best_cart = cart_base;
+  double best_distance_squared = cart_base.squaredNorm();
 
   /*
    * For a skewed cell, check the neighboring periodic images around
@@ -925,7 +838,7 @@ Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(
     }
 
     const Eigen::Vector3d cart_after_x =
-        (sx == 0) ? cart_base : cart_base - static_cast<double>(sx) * basis_vec0;
+        (sx == 0) ? cart_base : cart_base - static_cast<double>(sx) * basis_col0;
     const int shift_x = sx;
 
     for (int sy = -1; sy <= 1; ++sy)
@@ -936,7 +849,7 @@ Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(
       }
 
       const Eigen::Vector3d cart_after_y =
-          (sy == 0) ? cart_after_x : cart_after_x - static_cast<double>(sy) * basis_vec1;
+          (sy == 0) ? cart_after_x : cart_after_x - static_cast<double>(sy) * basis_col1;
       const int shift_y = sy;
 
       for (int sz = -1; sz <= 1; ++sz)
@@ -954,22 +867,19 @@ Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(
         }
 
         const Eigen::Vector3d cart_candidate =
-            (sz == 0) ? cart_after_y : cart_after_y - static_cast<double>(sz) * basis_vec2;
+            (sz == 0) ? cart_after_y : cart_after_y - static_cast<double>(sz) * basis_col2;
 
         const double candidate_distance_squared = cart_candidate.squaredNorm();
 
         if (candidate_distance_squared < best_distance_squared)
         {
           best_distance_squared = candidate_distance_squared;
-          // best_cart = cart_candidate;
+          best_cart = cart_candidate;
 
           Eigen::Vector3i image_shift = central_shift;
-          if (periodic_boundary_condition_[0])
-            image_shift(0) += shift_x;
-          if (periodic_boundary_condition_[1])
-            image_shift(1) += shift_y;
-          if (periodic_boundary_condition_[2])
-            image_shift(2) += sz;
+          if (periodic_boundary_condition_[0]) image_shift(0) += shift_x;
+          if (periodic_boundary_condition_[1]) image_shift(1) += shift_y;
+          if (periodic_boundary_condition_[2]) image_shift(2) += sz;
 
           best_difference = raw_difference - image_shift.cast<double>();
         }
@@ -980,6 +890,7 @@ Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(
   return best_difference;
 }
 
+
 size_t Config::GetDistanceOrder(size_t lattice_id1, size_t lattice_id2) const
 {
   if (lattice_id1 == lattice_id2)
@@ -987,7 +898,7 @@ size_t Config::GetDistanceOrder(size_t lattice_id1, size_t lattice_id2) const
     return 0;
   } // same lattice
   Eigen::Vector3d relative_distance_vector = GetRelativeDistanceVectorLattice(lattice_id1, lattice_id2);
-  double cartesian_distance = (basis_.transpose() * relative_distance_vector).norm();
+  double cartesian_distance = (basis_ * relative_distance_vector).norm();
   auto upper = std::upper_bound(cutoffs_.begin(), cutoffs_.end(), cartesian_distance);
 
   // std::cout << std::endl;
@@ -1097,7 +1008,7 @@ void Config::UpdateNeighborList(std::vector<double> cutoffs)
           }
           // Calculate distance
           const double cartesian_distance_squared =
-              (basis_.transpose() * GetRelativeDistanceVectorLattice(lattice_id1, lattice_id2)).squaredNorm();
+              (basis_ * GetRelativeDistanceVectorLattice(lattice_id1, lattice_id2)).squaredNorm();
           // If the distance is less than the cutoff, the points are bonded
           for (size_t cutoff_squared_id = 0; cutoff_squared_id < cutoffs_squared.size(); ++cutoff_squared_id)
           {
@@ -1144,15 +1055,14 @@ void Config::UpdateNeighborList(std::vector<double> cutoffs)
   For a non-orthogonal cell, the lattice-vector lengths cannot be used
   to determine linked-cell dimensions. The correct dimensions are the
   perpendicular distances between opposite faces of the simulation cell,
-  obtained from the reciprocal basis. Because basis_ stores lattice
-  vectors as rows, this is basis_.inverse().
+  obtained from the reciprocal (inverse-transpose) basis.
   */
-  const Eigen::Matrix3d reciprocal_basis = basis_.inverse();
+  const Eigen::Matrix3d inverse_transpose = basis_.inverse().transpose();
 
   Eigen::Vector3d cell_heights;
   for (int dim = 0; dim < 3; ++dim)
   {
-    cell_heights(dim) = 1.0 / reciprocal_basis.col(dim).norm();
+    cell_heights(dim) = 1.0 / inverse_transpose.col(dim).norm();
   }
 
   // Choose a bin width <= max_cutoff (cutoff/2 gives finer bins and a
@@ -1308,7 +1218,7 @@ void Config::UpdateNeighborList(std::vector<double> cutoffs)
             continue;
           }
           const double cartesian_distance_squared =
-              (basis_.transpose() * GetRelativeDistanceVectorLattice(lattice_id1, lattice_id2))
+              (basis_ * GetRelativeDistanceVectorLattice(lattice_id1, lattice_id2))
                   .squaredNorm();
 
           for (size_t cutoff_squared_id = 0;
@@ -1504,8 +1414,9 @@ Config Config::ReadCfg(const std::string &filename)
                                     {basis_yx, basis_yy, basis_yz},
                                     {basis_zx, basis_zy, basis_zz}};
 
-  // Config stores lattice vectors a, b, c as rows.
-  auto basis = basis_rows;
+  // Config uses basis where a, b, c are column vectors
+
+  auto basis = basis_rows.transpose();
 
   std::vector<Element> atom_vector;
   atom_vector.reserve(num_atoms);
@@ -1588,8 +1499,7 @@ Config Config::ReadXyz(const std::string &filename)
     }
   }
 
-  // Config stores lattice vectors a, b, c as rows.
-  auto basis = basis_rows;
+  auto basis = basis_rows.transpose();
 
   std::vector<Element> atom_vector;
   atom_vector.reserve(num_atoms);
@@ -1620,12 +1530,10 @@ Config Config::ReadXyz(const std::string &filename)
     cartesian_position_matrix(2, i) = z;
   }
 
-  const Eigen::Matrix3d cartesian_to_fractional =
-      basis.inverse().transpose();
+  Eigen::Matrix3d inv_basis = basis.inverse();
 
   Eigen::Matrix3Xd relative_positions_matrix(3, cartesian_position_matrix.cols());
-  relative_positions_matrix =
-      cartesian_to_fractional * cartesian_position_matrix;
+  relative_positions_matrix = inv_basis * cartesian_position_matrix;
 
   Config config_in = Config{basis, relative_positions_matrix, atom_vector};
 
@@ -1666,7 +1574,8 @@ Config Config::ReadPoscar(const std::string &filename)
   // basis *= scale;
   // auto inverse_basis = basis.inverse();
 
-  // Internally, basis_ stores lattice vectors as rows.
+  // Internally, basis_ stores lattice vectors as columns;
+  // transpose row-based file matrices when reading/writing.
 
   Eigen::Matrix3d basis_rows;
 
@@ -1682,12 +1591,13 @@ Config Config::ReadPoscar(const std::string &filename)
 
   basis_rows *= scale;
 
-  // POSCAR and Config both store the three cell vectors as rows.
-  const Eigen::Matrix3d basis = basis_rows;
+  // POSCAR stores the three cell vectors as rows.
+  // Config internally stores them as columns.
+  const Eigen::Matrix3d basis =
+      basis_rows.transpose();
 
-  // Cartesian columns = basis.transpose() * fractional columns.
   const Eigen::Matrix3d inverse_basis =
-      basis.inverse().transpose();
+      basis.inverse();
 
   // Read the elements and number of atoms
   std::string buffer;
@@ -1826,8 +1736,10 @@ void Config::WriteConfigExtended(
   // fos << "H0(3,2) = " << config_out.basis_(2, 1) << " A\n";
   // fos << "H0(3,3) = " << config_out.basis_(2, 2) << " A\n";
 
-  // Config and CFG both store lattice vectors a, b, c as rows.
-  const Eigen::Matrix3d &basis_rows = config_out.basis_;
+  // Internally, basis_ stores a, b, c as columns.
+  // CFG/OVITO/ase expects a, b, c to be written as rows.
+  const Eigen::Matrix3d basis_rows =
+      config_out.basis_.transpose();
 
   fos << "H0(1,1) = " << basis_rows(0, 0) << " A\n";
   fos << "H0(1,2) = " << basis_rows(0, 1) << " A\n";
@@ -1888,8 +1800,11 @@ void Config::WriteXyzExtended(const std::string &filename,
 
   // fos << "Lattice=\"" << config_out.basis_.format(fmt) << "\" ";
 
-  // Config stores lattice vectors as rows; XYZ writes a, b, c consecutively.
-  const Eigen::Matrix3d &basis_for_output = config_out.basis_;
+  // Internally basis_ stores lattice vectors as columns;
+  // XYZ writes them as consecutive vectors.
+
+  const Eigen::Matrix3d basis_for_output =
+      config_out.basis_.transpose();
 
   fos << "Lattice=\""
       << basis_for_output.format(fmt)

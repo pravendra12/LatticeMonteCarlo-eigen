@@ -102,7 +102,12 @@ double SymmetricCEPredictor::GetTotalFormationEnergy(
     formationEnergy += clusterVector[i] * ecis_[i];
   }
 
+
+
   double totalFormationEnergy = nAtoms_ * formationEnergy;
+
+
+  // cout << formationEnergy << "; " << totalFormationEnergy << "; " << nAtoms_ << endl;
 
   return totalFormationEnergy;
 }
