@@ -60,6 +60,8 @@ private:
 
   mutable std::ofstream frame_ofs_;
   mutable string processedConfigOutPath_;
+  mutable string b2ClusterAtomMapPath_;
+
 };
 
 #endif // LMC_LMC_ANSYS_INCLUDE_TRAVERSE_H_

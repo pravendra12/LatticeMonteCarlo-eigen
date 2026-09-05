@@ -10,3 +10,4 @@ increment_steps 10000
 enable_sro true
 enable_b2_order_param true
 enable_b2_cluster_ansys true
+enable_b2_cluster_atom_map true

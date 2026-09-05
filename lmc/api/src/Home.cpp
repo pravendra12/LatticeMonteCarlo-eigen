@@ -494,6 +494,7 @@ namespace api
     ansysFlags.SRO = parameter.enable_sro_;
     ansysFlags.B2OrderParam = parameter.enable_b2_order_param_;
     ansysFlags.B2ClusterAnsys = parameter.enable_b2_cluster_ansys_;
+    ansysFlags.B2ClusterAtomMap = parameter.enable_b2_cluster_atom_map_;
 
     return Traverse{parameter.initial_steps_,
                     parameter.increment_steps_,

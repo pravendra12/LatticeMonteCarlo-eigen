@@ -177,14 +177,21 @@ void Traverse::RunAnsys() const
   if (ansys_flags_.B2ClusterAnsys)
   {
     fs::path cwd = fs::current_path();
-    fs::path configDir = cwd / "processedConfig";
 
-    if (!fs::exists(configDir))
-      fs::create_directory(configDir);
-
-    processedConfigOutPath_ = configDir.string();
-
+    fs::path processedConfigDir = cwd / "processedConfig";
+    if (!fs::exists(processedConfigDir))
+      fs::create_directory(processedConfigDir);
+    processedConfigOutPath_ = processedConfigDir.string();
     std::cout << "Config directory created at: " << processedConfigOutPath_ << std::endl;
+
+    if (ansys_flags_.B2ClusterAtomMap)
+    {
+      fs::path atomMapDir = cwd / "b2ClusterAtomMap";
+      if (!fs::exists(atomMapDir))
+        fs::create_directory(atomMapDir);
+      b2ClusterAtomMapPath_ = atomMapDir.string();
+      std::cout << "B2 cluster-atom map directory created at: " << b2ClusterAtomMapPath_ << std::endl;
+    }
   }
 
   // Generate config indices
@@ -301,8 +308,14 @@ void Traverse::RunAnsysOnConfig(
   if (ansys_flags_.B2ClusterAnsys)
   {
     B2Cluster b2Cluster(config);
-    string filename = processedConfigOutPath_ + "/" + to_string(configIdx) + ".xyz.gz";
-    b2Cluster.WriteB2ClusterConfig(filename);
+    string clusterConfigFilename = processedConfigOutPath_ + "/" + to_string(configIdx) + ".xyz.gz";
+    b2Cluster.WriteB2ClusterConfig(clusterConfigFilename);
+
+    if (ansys_flags_.B2ClusterAtomMap)
+    {
+      string atomMapFilename = b2ClusterAtomMapPath_ + "/" + to_string(configIdx) + ".cluster.gz";
+      b2Cluster.WriteB2ClusterAtomIds(atomMapFilename);
+    }
   }
 }
 

@@ -169,6 +169,8 @@ struct Parameter {
   bool enable_b2_order_param_{};
   bool enable_b2_cluster_ansys_{};
 
+  bool enable_b2_cluster_atom_map_{};
+
 
   // For widom insertion
   // element which will be inserted

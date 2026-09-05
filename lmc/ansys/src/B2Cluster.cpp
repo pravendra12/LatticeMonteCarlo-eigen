@@ -7,14 +7,23 @@ B2Cluster::B2Cluster(const Config &config) : config_(config)
 
 void B2Cluster::WriteB2ClusterConfig(const string &filename)
 {
-  size_t numSites = config_.GetNumLattices();
+  const size_t numSites = config_.GetNumLattices();
 
   // Auxiliary lists
+  Config::VectorVariant atomIdVec = vector<size_t>(numSites, 0);
   Config::VectorVariant clusterIdVec = vector<int>(numSites, -1);
   Config::VectorVariant clusterSizeVec = vector<size_t>(numSites, 0);
   Config::VectorVariant isSharedVec = vector<int>(numSites, 0); // 0 = not shared, 1 = shared
 
   unordered_map<size_t, size_t> atomClusterCount;
+
+  // store the atomId as well
+  const size_t numAtoms = config_.GetNumAtoms();
+
+  for (size_t atomId = 0; atomId < numAtoms; ++atomId)
+  {
+    get<vector<size_t>>(atomIdVec)[atomId] = atomId;
+  }
 
   // First pass: count how many clusters each atom belongs to
   for (size_t clusterId = 0; clusterId < b2ClusterVector_.size(); ++clusterId)
@@ -42,6 +51,7 @@ void B2Cluster::WriteB2ClusterConfig(const string &filename)
   }
 
   map<string, Config::VectorVariant> auxiliaryLists;
+  auxiliaryLists["atomId"] = atomIdVec; 
   auxiliaryLists["clusterId"] = clusterIdVec;
   auxiliaryLists["clusterSize"] = clusterSizeVec;
   auxiliaryLists["sharedAtom"] = isSharedVec; // new shared flag
@@ -50,6 +60,41 @@ void B2Cluster::WriteB2ClusterConfig(const string &filename)
 
   Config::WriteXyzExtended(filename, config_, auxiliaryLists, globalList);
 }
+
+
+void B2Cluster::WriteB2ClusterAtomIds(const string &filename) const
+{
+  ofstream ofs(filename, ios_base::out | ios_base::binary);
+
+  boost::iostreams::filtering_ostream fos;
+
+  if (boost::filesystem::path(filename).extension() == ".gz")
+  {
+    fos.push(boost::iostreams::gzip_compressor());
+  }
+  else if (boost::filesystem::path(filename).extension() == ".bz2")
+  {
+    fos.push(boost::iostreams::bzip2_compressor());
+  }
+
+  fos.push(ofs);
+
+  for (size_t clusterId = 0; clusterId < b2ClusterVector_.size(); ++clusterId)
+  {
+    fos << clusterId << ":";
+
+    for (size_t latticeId : b2ClusterVector_[clusterId])
+    {
+      const size_t atomId =
+          config_.GetAtomIdOfLattice(latticeId);
+
+      fos << ' ' << atomId;
+    }
+
+    fos << '\n';
+  }
+}
+
 
 vector<unordered_set<size_t>> B2Cluster::GetB2Clusters()
 {

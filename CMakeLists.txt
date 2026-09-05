@@ -153,21 +153,39 @@ else ()
     endif ()
 endif ()
 
-find_package(Eigen3 3.4)
-if (NOT EIGEN3_FOUND)
-    message(WARNING "Eigen3 not found.")
-    message(STATUS "Downloading Eigen3 from Gitlab")
-    FetchContent_Declare(
-            Eigen3
-            GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-            GIT_TAG 3.4.0
-            GIT_PROGRESS TRUE
-            GIT_SHALLOW TRUE
-    )
-    FetchContent_MakeAvailable(Eigen3)
-    set(EIGEN3_INCLUDE_DIRS ${eigen3_SOURCE_DIR})
-endif ()
-target_link_libraries_system(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
+# find_package(Eigen3 3.4)
+# if (NOT EIGEN3_FOUND)
+#     message(WARNING "Eigen3 not found.")
+#     message(STATUS "Downloading Eigen3 from Gitlab")
+#     FetchContent_Declare(
+#             Eigen3
+#             GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+#             GIT_TAG 3.4.0
+#             GIT_PROGRESS TRUE
+#             GIT_SHALLOW TRUE
+#     )
+#     FetchContent_MakeAvailable(Eigen3)
+#     set(EIGEN3_INCLUDE_DIRS ${eigen3_SOURCE_DIR})
+# endif ()
+# target_link_libraries_system(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
+# 
+
+include(FetchContent)
+message(STATUS "Downloading Eigen 3.4.0 from GitLab")
+FetchContent_Declare(
+    Eigen3
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG        3.4.0
+    GIT_PROGRESS   TRUE
+    GIT_SHALLOW    TRUE
+    OVERRIDE_FIND_PACKAGE
+)
+FetchContent_MakeAvailable(Eigen3)
+target_link_libraries_system(
+    ${PROJECT_NAME}
+    PRIVATE
+    Eigen3::Eigen
+)
 
 ####################### pybind11 ####################################
 find_package(pybind11 QUIET)

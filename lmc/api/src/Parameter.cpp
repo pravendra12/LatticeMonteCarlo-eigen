@@ -268,6 +268,18 @@ namespace api
           enable_b2_cluster_ansys_ = false;
         }
       }
+      else if (segs[0] == "enable_b2_cluster_atom_map")
+      {
+        std::string bool_string = std::string(segs[1]);
+        if (bool_string == "true")
+        {
+          enable_b2_cluster_atom_map_ = true;
+        }
+        else
+        {
+          enable_b2_cluster_atom_map_ = false;
+        }
+      }
 
       else if (segs[0] == "ghost_element")
       {
