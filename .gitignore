@@ -8,5 +8,6 @@ out/
 .vs/
 .vscode/
 .fleet/
+.codex/
 CMakeSettings.json
 **/.DS_Store
