@@ -6,10 +6,15 @@ config_filename start_structure.cfg.gz
 # Cooling Profile
 # time_temperature_filename time_temp_profile.json
 structure_type BCC
+# Write kmc_log.txt every 1000 events in linear mode, including dR_<species>
+# and MSD_<species> = sum_i |dR_i|^2 / N_species (already averaged per atom).
+# Ordinary log rows do not write per-atom displacement files.
 log_dump_steps                1000
-# adaptive (default) or linear: fixed number of KMC events between snapshots
+# adaptive (default): denser early logging; linear: fixed event interval.
 log_dump_mode                 linear
 thermodynamic_averaging_steps 1000
+# Write matching <step>.cfg.gz and <step>.displacements.gz checkpoints.
+# Step zero is included; the final step also writes end.cfg and its displacement file.
 config_dump_steps             100000
 maximum_steps                 10000000
 max_cluster_size 3
@@ -20,10 +25,17 @@ supercell_size 4
 lattice_param 3.2
 restart_steps 0
 restart_energy 0
+restart_time 0
 rate_corrector false
 vacancy_trajectory 0.0 0.0 0.0
-# On restart, supply each species total from the matching kmc_log.txt row:
+# On restart, set config_filename to the matching numbered configuration and
+# set restart_steps, restart_energy, restart_time and vacancy_trajectory from its log row.
+# Supply each collective species vector from dR_<species> in that same row:
 # species_displacement Mo 0.0 0.0 0.0
 # species_displacement Ta 0.0 0.0 0.0
-# To continue tracer displacements, also read the matching atom snapshot:
+# To continue MSD from the original tracer origin, supply the matching checkpoint.
+# Individual vectors and their origin are restored; species squared sums are rebuilt.
 # displacement_restart_filename 100000.displacements.gz
+# Without this file, tracer vectors and MSD start at zero at the restart time.
+# MSD columns already include division by species population; do not divide again.
+# Archive an older log without MSD columns or restart in a new directory.

@@ -21,7 +21,7 @@ the configuration API.
 | Migration models | Kinetically resolved activation (KRA) and energy-change predictors; local vacancy formation-energy tools |
 | Structural analysis | Short-range order, B2 order parameters, B2 cluster analysis, and cluster-to-atom mapping |
 | Insertion analysis | Site-resolved energy changes from substituting a specified ghost species |
-| Transport data | Vacancy trajectories, collective species displacements, and individual atomic displacement snapshots |
+| Transport data | Vacancy trajectories, collective species displacements, online tracer MSDs, and restart checkpoints |
 
 The executable selects a workflow through a text parameter file. The active
 command-line methods are listed below; additional classes and utilities are
@@ -217,10 +217,10 @@ schedule implemented in [SimulatedAnnealing.cpp](lmc/mc/src/SimulatedAnnealing.c
 | --- | --- |
 | `cmc_log.txt` | Canonical MC sampling statistics |
 | `sa_log.txt` | Annealing step, temperature, and energy statistics |
-| `kmc_log.txt` | KMC time, energies, selected-event information, vacancy trajectory, and species displacement vectors |
+| `kmc_log.txt` | KMC time, energies, selected-event information, vacancy trajectory, species displacement vectors, and tracer MSDs |
 | `<step>.cfg.gz` | Periodically saved configurations |
 | `end.cfg.gz` / `end.cfg` | Final configuration for canonical MC / KMC and annealing, respectively |
-| `<step>.displacements.gz` | Per-atom KMC displacement snapshot for postprocessing |
+| `<step>.displacements.gz` | Per-atom KMC displacement checkpoint for tracer restart |
 | `ansys_frame_log.txt` | Frame-level structural analysis output |
 | `processedConfig/`, `b2ClusterAtomMap/` | Outputs enabled by B2 cluster-analysis options |
 | `widomInsertion/<step>.txt.gz` | Site-resolved ghost-species insertion/substitution energy changes |
@@ -253,6 +253,34 @@ do not imply equal elapsed times; retain the recorded physical time in analysis.
 `kmc_log.txt` includes one `dR_<element>` vector per non-vacancy species. This is
 the sum of the cumulative unwrapped displacements of that species' atoms.
 Each vector occupies one tab-delimited field with space-separated components.
+These collective vectors are used for Onsager transport correlations.
+
+The following `MSD_<element>` scalar columns contain `sum_i |dR_i|^2 / N_element`,
+where the sum includes every atom of that species, including unmoved atoms, and
+excludes the vacancy. Displacements are unwrapped Cartesian vectors relative to
+the tracer measurement origin. MSD has squared-distance units, not diffusivity
+units. In three dimensions, obtain tracer diffusivity from one sixth of the
+long-time linear MSD slope against physical time.
+
+Every exchange replaces the moving atom's old squared-displacement contribution
+with its new one. This preserves backtracking: an atom returning to its origin
+contributes zero. It is neither a sum of squared jump lengths nor the square of
+the collective species vector. Individual vectors remain in memory, but ordinary
+log rows only write the species sums divided by fixed species populations.
+
+For example, using optional pandas:
+
+```python
+import pandas as pd
+
+transport = pd.read_csv("kmc_log.txt", sep="\t")
+time = transport["time"]  # Subtract the tracer origin time for elapsed time.
+msd_fe = transport["MSD_Fe"]
+```
+
+Full `<step>.displacements.gz` files are written only alongside numbered
+configuration checkpoints and the terminal `end.cfg`, using its final step
+number. Initial/restart log rows alone do not trigger per-atom output.
 
 Each `<step>.displacements.gz` is independently readable compressed text:
 
@@ -320,12 +348,13 @@ independently of the optional atom snapshot.
 For continuous tracer measurements, supply the gzip snapshot from the same step
 as the configuration. The reader checks step/time, atom IDs/types, finite vectors,
 and the tracer measurement origin. It restores the individual displacement vectors
-and their original origin. Preserve CFG atom ordering and use the corresponding
+and their original origin, then reconstructs the species squared-displacement sums
+once from the vectors. Preserve CFG atom ordering and use the corresponding
 configuration: positions are not stored in the displacement snapshot.
 
 Without an atom snapshot, a restart begins a new tracer measurement with zero
-individual vectors. This does not reset the collective species totals supplied in
-the parameters. Each gzip snapshot records the tracer origin and
+individual vectors and zero tracer MSD. This does not reset the collective
+species totals supplied in the parameters. Each gzip snapshot records the tracer origin and
 `segment_start_step`, the start of the current invocation.
 
 Configuration-dump steps also write a matching KMC log row and atom snapshot,
@@ -335,7 +364,9 @@ even when they fall outside the regular logging schedule. The terminal
 A same-step displacement snapshot is replaced only after its new gzip stream
 finishes. Other existing snapshots are not deleted. When branching from an earlier
 configuration, use separate run directories or select files by segment metadata.
-KMC logs contain one column header and append only data rows on restart. Tracer
+KMC logs contain one column header and append only data rows on restart. A log
+with an older or different header is rejected before appending; archive the old
+log or restart in a new directory when upgrading to the MSD columns. Tracer
 origin and segment metadata are stored only in the gzip atom snapshots. The
 random-number generator state is not restored, so restarting does not promise an
 identical future stochastic trajectory.
@@ -405,3 +436,12 @@ This package builds on the original lattice Monte Carlo implementation developed
   chemical species, reference lattice, and neighbor/cluster definitions together.
 - **Restart snapshot is rejected:** use the configuration and gzip atom snapshot
   from the same step, with matching counters and preserved atom ordering.
+
+### Tracer MSD regression checks
+
+After configuring CMake with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, run
+`python3 script/test_tracer_msd.py build`. The harness compiles the production
+transport code with prescribed events and a predictor stand-in. It checks
+backtracking, multiple atoms/species, brute-force MSD agreement, checkpoint
+continuation, output columns/cadence, and two MPI ranks. The continuation check
+uses identical prescribed jumps, since production RNG state is not checkpointed.

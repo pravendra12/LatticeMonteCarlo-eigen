@@ -42,9 +42,10 @@ namespace mc
      * Constructor for KineticMcFirstAbstract.
      *
      * Initializes the kinetic Monte Carlo simulation with the given parameters.
+     * Counts real-species populations once and starts tracer vectors and squared
+     * sums at zero, unless a displacement checkpoint restores their old origin.
      *
      * @param config Simulation configuration.
-     * @param supercellConfig Training configuration used for the Cluster Expansion Model.
      * @param logDumpSteps Steps between logging progress.
      * @param configDumpSteps Steps between configuration dumps.
      * @param maximumSteps Maximum simulation steps.
@@ -53,8 +54,7 @@ namespace mc
      * @param restartEnergy Restart energy.
      * @param restartTime Restart time.
      * @param temperature Simulation temperature (in Kelvin).
-     * @param elementSet Set of elements involved in the simulation.
-     * @param predictorFilename Path to JSON file with cluster interaction coefficients.
+     * @param vacancyMigrationPredictor Predictor for migration barriers and energy changes.
      * @param timeTemperatureFilename Path to time-temperature data file.
      * @param isRateCorrector Whether rate correction needs to be applied.
      * @param vacancyTrajectory Initial vacancy trajectory vector.
@@ -106,19 +106,25 @@ namespace mc
     void UpdateTemperature();
 
     /**
-     * @brief Dumps the current simulation state.
+     * @brief Log the current state, collective vectors and species tracer MSDs.
+     * MSD is sum_i |dR_i|^2 / N for each real species, relative to the tracer
+     * origin, in squared Cartesian distance units. Only configuration and final
+     * checkpoints write per-atom vectors. All fields precede the next exchange.
+     * @throws std::runtime_error If an existing log has incompatible columns.
      */
     virtual void Dump() const;
 
     /**
      * @brief Accumulate unwrapped Cartesian displacements for the selected exchange.
      * Updates the vacancy, moving atom, and its species on every accepted event.
+     * Replaces the moving atom's old squared displacement in its species sum
+     * with the new value; preserves backtracking correlations without an atom scan.
      * Must be called before LatticeJump changes the atom-to-lattice mapping.
      */
     void UpdateDisplacements();
 
     /**
-     * @brief Return the current interval between log and atom trajectory snapshots.
+     * @brief Return the current interval between ordinary KMC log rows.
      * @return logDumpSteps_ in linear mode; a bounded power of ten during the
      * early part of adaptive mode, followed by logDumpSteps_.
      */
@@ -129,7 +135,8 @@ namespace mc
      * Writes step/time and measurement-origin metadata, followed by whitespace-
      * separated atom_id, element, dx, dy, dz columns in increasing atom-ID order.
      * Vectors are cumulative and unwrapped; vacancies are omitted. Dump() supplies
-     * the sampling schedule. A complete gzip file atomically replaces any snapshot
+     * the configuration/final checkpoint schedule. Ordinary log rows do not write
+     * per-atom files. A complete gzip file atomically replaces any snapshot
      * at the same step, including the initial state of a restarted simulation.
      * @throws std::runtime_error If compression, writing or replacement fails.
      */
@@ -137,6 +144,8 @@ namespace mc
 
     /**
      * @brief Restore per-atom tracer vectors and their origin from a gzip snapshot.
+     * Reconstructs species sums of squared individual displacements in O(N) once,
+     * so subsequent hops continue the same tracer measurement without resetting MSD.
      * Species totals and the vacancy vector remain those supplied in the parameters.
      * @param filename Snapshot matching the restart step, time and atom-ID ordering.
      * @throws std::runtime_error For invalid metadata, atom IDs/types or vectors.
@@ -220,8 +229,15 @@ namespace mc
     /// Event-count sampling mode, validated at construction.
     const string logDumpMode_;
 
-    /// Species totals in deterministic element order; vacancy is excluded.
+    /// Collective displacement sum_i dR_i for Onsager transport; excludes vacancy.
     map<Element, Eigen::RowVector3d> speciesDisplacements_{};
+
+    /// Tracer sum_i |dR_i|^2, not |sum_i dR_i|^2, relative to the tracer origin.
+    /// Updated for one atom per exchange; divide by speciesAtomCounts_ for MSD.
+    map<Element, double> speciesSquaredDisplacements_{};
+
+    /// Fixed populations of persistent atoms, counted once; vacancy X is excluded.
+    map<Element, size_t> speciesAtomCounts_{};
 
     /// Cumulative unwrapped displacement indexed by persistent atom ID.
     vector<Eigen::RowVector3d> atomDisplacements_{};

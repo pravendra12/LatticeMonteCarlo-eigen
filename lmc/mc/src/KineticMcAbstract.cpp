@@ -81,6 +81,9 @@ namespace mc
       if (element != ElementName::X)
       {
         speciesDisplacements_.try_emplace(element, Eigen::RowVector3d::Zero());
+        speciesSquaredDisplacements_.try_emplace(element, 0.0);
+        // Species belongs to the persistent atom, not its current lattice site.
+        ++speciesAtomCounts_[element];
       }
     }
     for (const auto &[element, displacement] : speciesDisplacements)
@@ -130,16 +133,28 @@ namespace mc
     const bool firstSnapshot = !firstSnapshotWritten_;
     if (firstSnapshot)
     {
-      // A restart appends data only; a new or empty log needs one column header.
+      ostringstream header;
+      header << "steps\ttime\taverage_time\ttemperature\tenergy\taverage_energy\tEa\tdE\tEa_Backward\tselected\tvacancy_trajectory";
+      for (const auto &[element, displacement] : speciesDisplacements_)
+      {
+        header << "\tdR_" << element;
+      }
+      for (const auto &[element, displacement] : speciesDisplacements_)
+      {
+        header << "\tMSD_" << element;
+      }
+      // Never append the new scalar fields under an older or mismatched header.
       ofs_.seekp(0, ios::end);
       if (ofs_.tellp() == streampos(0))
       {
-        ofs_ << "steps\ttime\taverage_time\ttemperature\tenergy\taverage_energy\tEa\tdE\tEa_Backward\tselected\tvacancy_trajectory";
-        for (const auto &[element, displacement] : speciesDisplacements_)
-        {
-          ofs_ << "\tdR_" << element;
-        }
-        ofs_ << endl;
+        ofs_ << header.str() << endl;
+      }
+      else
+      {
+        ifstream existingLog("kmc_log.txt");
+        string existingHeader;
+        if (!getline(existingLog, existingHeader) || existingHeader != header.str())
+          throw runtime_error("Incompatible kmc_log.txt header; restart in a new directory or archive the old log");
       }
     }
     if (steps_ % configDumpSteps_ == 0)
@@ -171,12 +186,22 @@ namespace mc
       {
         ofs_ << '\t' << displacement;
       }
+      // The running sums already describe this state; logging needs no atom scan.
+      for (const auto &[element, displacement] : speciesDisplacements_)
+      {
+        const auto count = speciesAtomCounts_.at(element);
+        ofs_ << '\t' << (count == 0 ? 0.0 :
+            speciesSquaredDisplacements_.at(element) / static_cast<double>(count));
+      }
       ofs_ << endl;
       if (!ofs_)
       {
         throw runtime_error("Failed writing kmc_log.txt");
       }
-      DumpAtomDisplacements();
+      if (steps_ % configDumpSteps_ == 0 || steps_ == maximumSteps_)
+      {
+        DumpAtomDisplacements();
+      }
       firstSnapshotWritten_ = true;
     }
   }
@@ -215,8 +240,14 @@ namespace mc
 
     // The exchanging atom moves opposite to the vacancy. Accumulating jump
     // vectors preserves unwrapped displacement across periodic boundaries.
+    auto &displacement = atomDisplacements_.at(atomId);
+    auto &squaredDisplacements = speciesSquaredDisplacements_.at(element);
+    // Replace only this atom's contribution to sum_i |dR_i|^2. Squaring each
+    // jump instead would lose correlations, including cancellation on return.
+    squaredDisplacements -= displacement.squaredNorm();
+    displacement -= vacancyJump;
+    squaredDisplacements += displacement.squaredNorm();
     speciesDisplacements_.at(element) -= vacancyJump;
-    atomDisplacements_.at(atomId) -= vacancyJump;
     vacancyTrajectory_ += vacancyJump;
   }
 
@@ -324,6 +355,16 @@ namespace mc
       string extra;
       if (input >> extra)
         throw runtime_error("Unexpected extra atom snapshot data");
+      // Rebuild once from the restored vectors at their original tracer origin.
+      // A logged MSD scalar cannot replace these vectors for future hop updates.
+      for (auto &[element, squaredDisplacements] : speciesSquaredDisplacements_)
+        squaredDisplacements = 0.0;
+      for (size_t atomId = 0; atomId < atomDisplacements_.size(); ++atomId)
+      {
+        const auto element = config_.GetElementOfAtom(atomId);
+        if (element != ElementName::X)
+          speciesSquaredDisplacements_.at(element) += atomDisplacements_[atomId].squaredNorm();
+      }
       displacementOriginSteps_ = originStep;
       displacementOriginTime_ = originTime;
       time_ = snapshotTime;
