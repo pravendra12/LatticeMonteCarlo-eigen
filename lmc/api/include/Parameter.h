@@ -20,6 +20,8 @@
 #include <vector>
 #include <iterator>
 #include <Eigen/Dense>
+#include <map>
+#include "Element.hpp"
 
 namespace api {
 
@@ -85,6 +87,15 @@ struct Parameter {
   /// Number of steps after which the log file is updated.
   unsigned long long int log_dump_steps_{};
 
+  /// KMC sampling schedule: "adaptive" (default) or "linear" in event count.
+  std::string log_dump_mode_{"adaptive"};
+
+  /// Optional gzip atom displacement snapshot matching the restart configuration.
+  std::string displacement_restart_filename_{};
+
+  /// Initial collective vectors, from repeated species_displacement <element> x y z lines.
+  std::map<Element, Eigen::RowVector3d> species_displacements_{};
+
   /// Number of steps after which the configuration is dumped.
   unsigned long long int config_dump_steps_{};
 
@@ -92,7 +103,7 @@ struct Parameter {
   unsigned long long int maximum_steps_{};
 
   /// Vector to store vacancy trajectory
-  Eigen::RowVector3d vacancy_trajectory_{};
+  Eigen::RowVector3d vacancy_trajectory_{Eigen::RowVector3d::Zero()};
 
   /// Maximum size of clusters to be considered.
   size_t max_cluster_size_{};

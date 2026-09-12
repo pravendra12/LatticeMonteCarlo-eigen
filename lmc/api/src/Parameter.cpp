@@ -96,6 +96,36 @@ namespace api
       {
         log_dump_steps_ = stoull(segs[1]);
       }
+      else if (segs[0] == "log_dump_mode")
+      {
+        if (segs.size() != 2 || (segs[1] != "adaptive" && segs[1] != "linear"))
+        {
+          throw std::invalid_argument("log_dump_mode must be adaptive or linear");
+        }
+        log_dump_mode_ = segs[1];
+      }
+      else if (segs[0] == "displacement_restart_filename")
+      {
+        if (segs.size() != 2)
+        {
+          throw std::invalid_argument("displacement_restart_filename requires a filename");
+        }
+        displacement_restart_filename_ = segs[1];
+      }
+      else if (segs[0] == "species_displacement")
+      {
+        if (segs.size() != 5)
+        {
+          throw std::invalid_argument("Expected species_displacement <element> dx dy dz");
+        }
+        const Element element(segs[1]);
+        const Eigen::RowVector3d displacement(stod(segs[2]), stod(segs[3]), stod(segs[4]));
+        if (element == ElementName::X || !displacement.allFinite() ||
+            !species_displacements_.emplace(element, displacement).second)
+        {
+          throw std::invalid_argument("species_displacement requires a unique non-vacancy species and finite vector");
+        }
+      }
       else if (segs[0] == "config_dump_steps")
       {
         config_dump_steps_ = stoull(segs[1]);

@@ -9,6 +9,13 @@
 namespace mc {
 class KineticMcFirstOmp : public KineticMcFirstAbstract {
   public:
+    /**
+     * @brief Construct an OpenMP KMC simulation with displacement tracking.
+     * @param logDumpMode Event sampling schedule: "adaptive" or "linear".
+     * @param speciesDisplacements Initial species totals supplied in the parameter file.
+     * @param displacementRestartFilename Optional gzip atom snapshot matching the restart configuration.
+     * Other parameters are documented by KineticMcFirstAbstract.
+     */
     KineticMcFirstOmp(Config config,
                       const unsigned long long int logDumpSteps,
                       const unsigned long long int configDumpSteps,
@@ -21,7 +28,10 @@ class KineticMcFirstOmp : public KineticMcFirstAbstract {
                       VacancyMigrationPredictor &vacancyMigrationPredictor,
                       const string &timeTemperatureFilename,
                       const bool isRateCorrector,
-                      const Eigen::RowVector3d &vacancyTrajectory);
+                      const Eigen::RowVector3d &vacancyTrajectory,
+                      const string &logDumpMode = "adaptive",
+                      const string &displacementRestartFilename = "",
+                      const map<Element, Eigen::RowVector3d> &speciesDisplacements = {});
     ~KineticMcFirstOmp() override;
   protected:
     void BuildEventList() override;

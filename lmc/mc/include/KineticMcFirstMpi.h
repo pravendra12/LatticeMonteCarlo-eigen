@@ -46,6 +46,9 @@ namespace mc
      * @param timeTemperatureFilename   Path to the time-temperature data file.
      * @param isRateCorrector           Flag to enable rate correction.
      * @param vacancyTrajectory         Initial vacancy trajectory vector.
+     * @param logDumpMode Event sampling schedule: "adaptive" or "linear".
+     * @param speciesDisplacements Initial species totals supplied in the parameter file.
+     * @param displacementRestartFilename Optional gzip atom snapshot matching config and restart time.
      */
     KineticMcFirstMpi(Config config,
                       const unsigned long long int logDumpSteps,
@@ -59,7 +62,10 @@ namespace mc
                       VacancyMigrationPredictor &vacancyMigrationPredictor,
                       const string &timeTemperatureFilename,
                       const bool isRateCorrector,
-                      const Eigen::RowVector3d &vacancyTrajectory);
+                      const Eigen::RowVector3d &vacancyTrajectory,
+                      const string &logDumpMode = "adaptive",
+                      const string &displacementRestartFilename = "",
+                      const map<Element, Eigen::RowVector3d> &speciesDisplacements = {});
 
     /*!
      * @brief Deconstructor for KineticMcFirstMpi class.

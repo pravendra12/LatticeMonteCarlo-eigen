@@ -16,6 +16,7 @@
 #define LMC_LMC_MC_INCLUDE_KINETICMCABSTRACT_H_
 
 #include <random>
+#include <map>
 #include <omp.h>
 #include <mpi.h>
 #include <Eigen/Dense>
@@ -57,6 +58,9 @@ namespace mc
      * @param timeTemperatureFilename Path to time-temperature data file.
      * @param isRateCorrector Whether rate correction needs to be applied.
      * @param vacancyTrajectory Initial vacancy trajectory vector.
+     * @param logDumpMode Event sampling schedule: "adaptive" or "linear".
+     * @param speciesDisplacements Initial species totals supplied in the parameter file.
+     * @param displacementRestartFilename Optional gzip atom snapshot matching config and restart time.
      */
     KineticMcFirstAbstract(Config config,
                            unsigned long long int logDumpSteps,
@@ -70,7 +74,10 @@ namespace mc
                            VacancyMigrationPredictor &vacancyMigrationPredictor,
                            const string &timeTemperatureFilename,
                            bool isRateCorrector,
-                           const Eigen::RowVector3d &vacancyTrajectory);
+                           const Eigen::RowVector3d &vacancyTrajectory,
+                           const string &logDumpMode = "adaptive",
+                           const string &displacementRestartFilename = "",
+                           const map<Element, Eigen::RowVector3d> &speciesDisplacements = {});
 
     /**
      * @brief Destructor for KineticMcFirstAbstract.
@@ -102,6 +109,39 @@ namespace mc
      * @brief Dumps the current simulation state.
      */
     virtual void Dump() const;
+
+    /**
+     * @brief Accumulate unwrapped Cartesian displacements for the selected exchange.
+     * Updates the vacancy, moving atom, and its species on every accepted event.
+     * Must be called before LatticeJump changes the atom-to-lattice mapping.
+     */
+    void UpdateDisplacements();
+
+    /**
+     * @brief Return the current interval between log and atom trajectory snapshots.
+     * @return logDumpSteps_ in linear mode; a bounded power of ten during the
+     * early part of adaptive mode, followed by logDumpSteps_.
+     */
+    [[nodiscard]] unsigned long long int GetLogDumpSteps() const;
+
+    /**
+     * @brief Stream one snapshot to <step>.displacements.gz on rank zero.
+     * Writes step/time and measurement-origin metadata, followed by whitespace-
+     * separated atom_id, element, dx, dy, dz columns in increasing atom-ID order.
+     * Vectors are cumulative and unwrapped; vacancies are omitted. Dump() supplies
+     * the sampling schedule. A complete gzip file atomically replaces any snapshot
+     * at the same step, including the initial state of a restarted simulation.
+     * @throws std::runtime_error If compression, writing or replacement fails.
+     */
+    void DumpAtomDisplacements() const;
+
+    /**
+     * @brief Restore per-atom tracer vectors and their origin from a gzip snapshot.
+     * Species totals and the vacancy vector remain those supplied in the parameters.
+     * @param filename Snapshot matching the restart step, time and atom-ID ordering.
+     * @throws std::runtime_error For invalid metadata, atom IDs/types or vectors.
+     */
+    void ReadAtomDisplacements(const string &filename);
 
     /**
      * @brief Selects an event to simulate based on rates.
@@ -177,6 +217,25 @@ namespace mc
      */
     Eigen::RowVector3d vacancyTrajectory_;
 
+    /// Event-count sampling mode, validated at construction.
+    const string logDumpMode_;
+
+    /// Species totals in deterministic element order; vacancy is excluded.
+    map<Element, Eigen::RowVector3d> speciesDisplacements_{};
+
+    /// Cumulative unwrapped displacement indexed by persistent atom ID.
+    vector<Eigen::RowVector3d> atomDisplacements_{};
+
+    /// Origin of the per-atom tracer measurement; species totals are independent.
+    unsigned long long int displacementOriginSteps_;
+    double displacementOriginTime_;
+
+    /// Start of this invocation, independent of a restored measurement origin.
+    const unsigned long long int displacementSegmentStartSteps_;
+
+    /// Whether this invocation has written its initial/restart snapshot.
+    mutable bool firstSnapshotWritten_{false};
+
     /**
      * @brief Jump events vector.
      *
@@ -224,6 +283,9 @@ namespace mc
      * @param timeTemperatureFilename Path to time-temperature data file.
      * @param isRateCorrector Whether rate correction needs to be applied.
      * @param vacancyTrajectory Initial vacancy trajectory vector.
+     * @param logDumpMode Event sampling schedule: "adaptive" or "linear".
+     * @param speciesDisplacements Initial species totals supplied in the parameter file.
+     * @param displacementRestartFilename Optional gzip atom snapshot matching config and restart time.
      */
     KineticMcChainAbstract(Config config,
                            unsigned long long int logDumpSteps,
@@ -237,7 +299,10 @@ namespace mc
                            VacancyMigrationPredictor &vacancyMigrationPredictor,
                            const string &timeTemperatureFilename,
                            bool isRateCorrector,
-                           const Eigen::RowVector3d &vacancyTrajectory);
+                           const Eigen::RowVector3d &vacancyTrajectory,
+                           const string &logDumpMode = "adaptive",
+                           const string &displacementRestartFilename = "",
+                           const map<Element, Eigen::RowVector3d> &speciesDisplacements = {});
 
     /**
      * @brief Destructor for KineticMcChainAbstract.

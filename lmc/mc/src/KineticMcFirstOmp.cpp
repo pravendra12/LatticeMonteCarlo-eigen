@@ -15,7 +15,10 @@ namespace mc
                                        VacancyMigrationPredictor &vacancyMigrationPredictor,
                                        const string &timeTemperatureFilename,
                                        const bool isRateCorrector,
-                                       const Eigen::RowVector3d &vacancyTrajectory)
+                                       const Eigen::RowVector3d &vacancyTrajectory,
+                                       const string &logDumpMode,
+                                       const string &displacementRestartFilename,
+                                       const map<Element, Eigen::RowVector3d> &speciesDisplacements)
       : KineticMcFirstAbstract(move(config),
                                logDumpSteps,
                                configDumpSteps,
@@ -28,7 +31,10 @@ namespace mc
                                vacancyMigrationPredictor,
                                timeTemperatureFilename,
                                isRateCorrector,
-                               vacancyTrajectory)
+                               vacancyTrajectory,
+                               logDumpMode,
+                               displacementRestartFilename,
+                               speciesDisplacements)
   {
     if (world_size_ != 1)
     {

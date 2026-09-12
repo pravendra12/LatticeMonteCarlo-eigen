@@ -7,11 +7,15 @@
  ******************************************************************************/
 
 /**
- * @file KineticMcAbstract.h
+ * @file KineticMcAbstract.cpp
  * @brief File contains implementation of KineticMcAbstract Class.
  */
 
 #include "KineticMcAbstract.h"
+#include <filesystem>
+#include <limits>
+#include <boost/iostreams/filter/gzip.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
 
 namespace mc
 {
@@ -28,7 +32,10 @@ namespace mc
                                                  VacancyMigrationPredictor &vacancyMigrationPredictor,
                                                  const string &timeTemperatureFilename,
                                                  const bool isRateCorrector,
-                                                 const Eigen::RowVector3d &vacancyTrajectory)
+                                                 const Eigen::RowVector3d &vacancyTrajectory,
+                                                 const string &logDumpMode,
+                                                 const string &displacementRestartFilename,
+                                                 const map<Element, Eigen::RowVector3d> &speciesDisplacements)
       : McAbstract(move(config),
                    logDumpSteps,
                    configDumpSteps,
@@ -40,7 +47,7 @@ namespace mc
                    temperature,
                    "kmc_log.txt"),
         kEventListSize_(
-            config.GetNeighborLatticeIdVectorOfLattice(0, 1).size()),
+            config_.GetNeighborLatticeIdVectorOfLattice(0, 1).size()),
         vacancyMigrationPredictor_(
             vacancyMigrationPredictor),
         timeTemperatureInterpolator_(
@@ -49,8 +56,50 @@ namespace mc
         isRateCorrector_(isRateCorrector),
         vacancyLatticeId_(config_.GetVacancyLatticeId()),
         vacancyTrajectory_(vacancyTrajectory),
+        logDumpMode_(logDumpMode),
+        atomDisplacements_(config_.GetNumAtoms(), Eigen::RowVector3d::Zero()),
+        displacementOriginSteps_(restartSteps),
+        displacementOriginTime_(restartTime),
+        displacementSegmentStartSteps_(restartSteps),
         event_k_i_list_(kEventListSize_)
   {
+    if (logDumpMode_ != "adaptive" && logDumpMode_ != "linear")
+    {
+      throw invalid_argument("log_dump_mode must be adaptive or linear");
+    }
+    if (logDumpSteps_ == 0 || configDumpSteps_ == 0)
+    {
+      throw invalid_argument("KMC log_dump_steps and config_dump_steps must be positive");
+    }
+    if (restartSteps > maximumSteps_)
+    {
+      throw invalid_argument("restart_steps must not exceed maximum_steps");
+    }
+    ofs_.precision(numeric_limits<double>::max_digits10);
+    for (const auto &element : config_.GetAtomVector())
+    {
+      if (element != ElementName::X)
+      {
+        speciesDisplacements_.try_emplace(element, Eigen::RowVector3d::Zero());
+      }
+    }
+    for (const auto &[element, displacement] : speciesDisplacements)
+    {
+      if (!speciesDisplacements_.count(element) || !displacement.allFinite())
+      {
+        throw invalid_argument("species_displacement must name a species in the configuration and contain finite values");
+      }
+      speciesDisplacements_.at(element) = displacement;
+    }
+    if (!displacementRestartFilename.empty())
+    {
+      ReadAtomDisplacements(displacementRestartFilename);
+    }
+    if (world_rank_ == 0 && is_restarted_ && displacementRestartFilename.empty())
+    {
+      cout << "No atom snapshot supplied; starting a new tracer measurement at step "
+           << steps_ << "." << endl;
+    }
   }
 
   KineticMcFirstAbstract::~KineticMcFirstAbstract() = default;
@@ -74,19 +123,24 @@ namespace mc
 
   void KineticMcFirstAbstract::Dump() const
   {
-    if (is_restarted_)
-    {
-      is_restarted_ = false;
-      return;
-    }
     if (world_rank_ != 0)
     {
       return;
     }
-    if (steps_ == 0)
+    const bool firstSnapshot = !firstSnapshotWritten_;
+    if (firstSnapshot)
     {
-      ofs_ << "steps\ttime\taverage_time\ttemperature\tenergy\taverage_energy\tEa\tdE\tEa_Backward\tselected\tvacancy_trajectory";
-      ofs_ << endl;
+      // A restart appends data only; a new or empty log needs one column header.
+      ofs_.seekp(0, ios::end);
+      if (ofs_.tellp() == streampos(0))
+      {
+        ofs_ << "steps\ttime\taverage_time\ttemperature\tenergy\taverage_energy\tEa\tdE\tEa_Backward\tselected\tvacancy_trajectory";
+        for (const auto &[element, displacement] : speciesDisplacements_)
+        {
+          ofs_ << "\tdR_" << element;
+        }
+        ofs_ << endl;
+      }
     }
     if (steps_ % configDumpSteps_ == 0)
     {
@@ -97,19 +151,10 @@ namespace mc
       config_.WriteConfig("end.cfg", config_);
     }
 
-    unsigned long long int logDumpSteps;
-    if (steps_ > 10 * logDumpSteps_)
-    {
-      logDumpSteps = logDumpSteps_;
-    }
-    else
-    {
-      logDumpSteps = static_cast<unsigned long long int>(
-          pow(10, static_cast<unsigned long long int>(log10(steps_ + 1) - 1)));
-      logDumpSteps = max(logDumpSteps, static_cast<unsigned long long int>(1));
-      logDumpSteps = min(logDumpSteps, logDumpSteps_);
-    }
-    if (steps_ % logDumpSteps == 0)
+    // Always include the measurement's initial and final states.
+    // Configuration steps also need log counters and an atom snapshot for restart.
+    if (firstSnapshot || steps_ == maximumSteps_ || steps_ % configDumpSteps_ == 0 ||
+        steps_ % GetLogDumpSteps() == 0)
     {
       ofs_ << steps_ << '\t'
            << time_ << '\t'
@@ -121,7 +166,171 @@ namespace mc
            << event_k_i_.GetEnergyChange() << '\t'
            << event_k_i_.GetBackwardBarrier() << "\t"
            << event_k_i_.GetIdJumpPair().second << '\t'
-           << vacancyTrajectory_ << endl;
+           << vacancyTrajectory_;
+      for (const auto &[element, displacement] : speciesDisplacements_)
+      {
+        ofs_ << '\t' << displacement;
+      }
+      ofs_ << endl;
+      if (!ofs_)
+      {
+        throw runtime_error("Failed writing kmc_log.txt");
+      }
+      DumpAtomDisplacements();
+      firstSnapshotWritten_ = true;
+    }
+  }
+
+  unsigned long long int KineticMcFirstAbstract::GetLogDumpSteps() const
+  {
+    if (logDumpMode_ == "linear")
+    {
+      return logDumpSteps_;
+    }
+    // Integer arithmetic avoids negative floating-point exponents at step zero
+    // and overflow in the original 10 * logDumpSteps_ threshold.
+    if (steps_ > 0 && (steps_ - 1) / 10 >= logDumpSteps_)
+    {
+      return logDumpSteps_;
+    }
+    auto decade = steps_ == numeric_limits<unsigned long long int>::max()
+                      ? steps_ / 10 : (steps_ + 1) / 10;
+    unsigned long long int interval = 1;
+    while (decade >= 10 && interval < logDumpSteps_)
+    {
+      decade /= 10;
+      interval *= 10;
+    }
+    return min(interval, logDumpSteps_);
+  }
+
+  void KineticMcFirstAbstract::UpdateDisplacements()
+  {
+    const auto destination = event_k_i_.GetIdJumpPair().second;
+    const auto atomId = config_.GetAtomIdOfLattice(destination);
+    const auto element = config_.GetElementOfAtom(atomId);
+    const Eigen::RowVector3d vacancyJump =
+        config_.GetRelativeDistanceVectorLattice(vacancyLatticeId_, destination)
+            .transpose() * config_.GetBasis();
+
+    // The exchanging atom moves opposite to the vacancy. Accumulating jump
+    // vectors preserves unwrapped displacement across periodic boundaries.
+    speciesDisplacements_.at(element) -= vacancyJump;
+    atomDisplacements_.at(atomId) -= vacancyJump;
+    vacancyTrajectory_ += vacancyJump;
+  }
+
+  void KineticMcFirstAbstract::DumpAtomDisplacements() const
+  {
+    if (world_rank_ != 0)
+    {
+      return;
+    }
+    const string filename = to_string(steps_) + ".displacements.gz";
+    const string temporaryFilename = filename + ".tmp";
+    try
+    {
+      ofstream output;
+      output.exceptions(ios::badbit | ios::failbit);
+      output.open(temporaryFilename, ios::binary | ios::trunc);
+      boost::iostreams::filtering_ostream compressed;
+      compressed.push(boost::iostreams::gzip_compressor());
+      compressed.push(output);
+      compressed.exceptions(ios::badbit | ios::failbit);
+      compressed.precision(numeric_limits<double>::max_digits10);
+      compressed << "# step " << steps_
+                 << "\n# time " << time_
+                 << "\n# displacement_origin_step " << displacementOriginSteps_
+                 << "\n# displacement_origin_time " << displacementOriginTime_
+                 << "\n# segment_start_step " << displacementSegmentStartSteps_
+                 << "\natom_id element dx dy dz\n";
+
+      // Stream rows directly into gzip instead of buffering the whole snapshot.
+      const Eigen::IOFormat vectorFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, " ", "\n");
+      for (size_t atomId = 0; atomId < atomDisplacements_.size(); ++atomId)
+      {
+        const auto element = config_.GetElementOfAtom(atomId);
+        if (element != ElementName::X)
+        {
+          compressed << atomId << ' ' << element << ' '
+                     << atomDisplacements_[atomId].format(vectorFormat) << '\n';
+        }
+      }
+      // Finish the gzip trailer before publishing, so a restarted run replaces
+      // the old snapshot with one complete file rather than appending more rows.
+      compressed.flush();
+      // Detaching the filter buffer sets badbit even on successful completion.
+      // The underlying file stream still throws on write/close errors.
+      compressed.exceptions(ios::goodbit);
+      compressed.reset();
+      output.close();
+      std::filesystem::rename(temporaryFilename, filename);
+    }
+    catch (const exception &error)
+    {
+      std::error_code ignored;
+      std::filesystem::remove(temporaryFilename, ignored);
+      throw runtime_error("Failed writing " + filename + ": " + error.what());
+    }
+  }
+
+  void KineticMcFirstAbstract::ReadAtomDisplacements(const string &filename)
+  {
+    try
+    {
+      ifstream file(filename, ios::binary);
+      if (!file)
+        throw runtime_error("Cannot open snapshot");
+      boost::iostreams::filtering_istream input;
+      input.push(boost::iostreams::gzip_decompressor());
+      input.push(file);
+      input.exceptions(ios::badbit);
+
+      // Read metadata written by DumpAtomDisplacements; no positions are needed.
+      map<string, string> metadata;
+      string line;
+      while (getline(input, line) && !line.empty() && line.front() == '#')
+      {
+        istringstream header(line.substr(1));
+        string key, value;
+        if (!(header >> key >> value) || !metadata.emplace(key, value).second)
+          throw runtime_error("Invalid snapshot metadata");
+      }
+      if (line != "atom_id element dx dy dz")
+        throw runtime_error("Invalid atom displacement columns");
+      const auto snapshotStep = stoull(metadata.at("step"));
+      const double snapshotTime = stod(metadata.at("time"));
+      const auto originStep = stoull(metadata.at("displacement_origin_step"));
+      const double originTime = stod(metadata.at("displacement_origin_time"));
+      if (snapshotStep != steps_ || !isfinite(snapshotTime) || !isfinite(time_) ||
+          abs(snapshotTime - time_) > 1e-12 * max(abs(snapshotTime), abs(time_)) ||
+          originStep > steps_ || !isfinite(originTime) || originTime > snapshotTime)
+        throw runtime_error("Snapshot step, time or measurement origin does not match restart");
+
+      // IDs follow CFG atom ordering, with the vacancy omitted from the snapshot.
+      for (size_t atomId = 0; atomId < atomDisplacements_.size(); ++atomId)
+      {
+        const auto element = config_.GetElementOfAtom(atomId);
+        if (element == ElementName::X)
+          continue;
+        size_t savedId;
+        string savedElement;
+        Eigen::RowVector3d displacement;
+        if (!(input >> savedId >> savedElement >> displacement(0) >> displacement(1) >> displacement(2)) ||
+            savedId != atomId || Element(savedElement) != element || !displacement.allFinite())
+          throw runtime_error("Snapshot atom IDs, species or displacement vectors do not match configuration");
+        atomDisplacements_[atomId] = displacement;
+      }
+      string extra;
+      if (input >> extra)
+        throw runtime_error("Unexpected extra atom snapshot data");
+      displacementOriginSteps_ = originStep;
+      displacementOriginTime_ = originTime;
+      time_ = snapshotTime;
+    }
+    catch (const exception &error)
+    {
+      throw runtime_error("Cannot restore atom displacements from " + filename + ": " + error.what());
     }
   }
 
@@ -185,19 +394,18 @@ namespace mc
 
     Dump();
 
+    // The final snapshot is the terminal state, not the start of another jump.
+    if (steps_ == maximumSteps_)
+    {
+      return;
+    }
+
     // modify
     time_ += one_step_time;
     energy_ += event_k_i_.GetEnergyChange();
     absolute_energy_ += event_k_i_.GetEnergyChange();
 
-    Eigen::RowVector3d vacancyTrajectory_step =
-        (config_.GetRelativeDistanceVectorLattice(vacancyLatticeId_,
-                                                  event_k_i_.GetIdJumpPair().second))
-            .transpose() *
-        config_.GetBasis();
-
-    vacancyTrajectory_ += vacancyTrajectory_step;
-
+    UpdateDisplacements();
     config_.LatticeJump(event_k_i_.GetIdJumpPair());
     ++steps_;
     vacancyLatticeId_ = event_k_i_.GetIdJumpPair().second;
@@ -205,10 +413,11 @@ namespace mc
 
   void KineticMcFirstAbstract::Simulate()
   {
-    while (steps_ <= maximumSteps_)
+    while (steps_ < maximumSteps_)
     {
       OneStepSimulation();
     }
+    OneStepSimulation(); // Write the terminal state without executing another jump.
   }
 
   KineticMcChainAbstract::KineticMcChainAbstract(Config config,
@@ -223,7 +432,10 @@ namespace mc
                                                  VacancyMigrationPredictor &vacancyMigrationPredictor,
                                                  const string &timeTemperatureFilename,
                                                  const bool isRateCorrector,
-                                                 const Eigen::RowVector3d &vacancyTrajectory)
+                                                 const Eigen::RowVector3d &vacancyTrajectory,
+                                                 const string &logDumpMode,
+                                                 const string &displacementRestartFilename,
+                                                 const map<Element, Eigen::RowVector3d> &speciesDisplacements)
       : KineticMcFirstAbstract(move(config),
                                logDumpSteps,
                                configDumpSteps,
@@ -236,7 +448,10 @@ namespace mc
                                vacancyMigrationPredictor,
                                timeTemperatureFilename,
                                isRateCorrector,
-                               vacancyTrajectory),
+                               vacancyTrajectory,
+                               logDumpMode,
+                               displacementRestartFilename,
+                               speciesDisplacements),
         previous_j_lattice_id_(config_.GetNeighborLatticeIdVectorOfLattice(vacancyLatticeId_, 1)[0]),
         l_lattice_id_list_(kEventListSize_)
   {

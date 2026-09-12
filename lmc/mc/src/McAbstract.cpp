@@ -37,14 +37,21 @@ McAbstract::McAbstract(Config config,
       thermodynamicAveraging_(thermodynamicAveragingSteps),
       generator_(static_cast<unsigned long long int>(
           chrono::system_clock::now().time_since_epoch().count())),
-      unitDistribution_(0.0, 1.0),
-      ofs_(logFilename, is_restarted_ ? ofstream::app : ofstream::out)
+      unitDistribution_(0.0, 1.0)
 {
-  ofs_.precision(16);
-
   MPI_Init(nullptr, nullptr);
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank_);
   MPI_Comm_size(MPI_COMM_WORLD, &world_size_);
+  // Only the writer may open/truncate the shared log file.
+  if (world_rank_ == 0)
+  {
+    ofs_.open(logFilename, is_restarted_ ? ofstream::app : ofstream::out);
+    if (!ofs_)
+    {
+      throw runtime_error("Cannot open " + logFilename);
+    }
+    ofs_.precision(16);
+  }
 }
 McAbstract::~McAbstract()
 {

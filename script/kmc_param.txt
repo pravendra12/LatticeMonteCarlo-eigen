@@ -7,6 +7,8 @@ config_filename start_structure.cfg.gz
 # time_temperature_filename time_temp_profile.json
 structure_type BCC
 log_dump_steps                1000
+# adaptive (default) or linear: fixed number of KMC events between snapshots
+log_dump_mode                 linear
 thermodynamic_averaging_steps 1000
 config_dump_steps             100000
 maximum_steps                 10000000
@@ -20,3 +22,8 @@ restart_steps 0
 restart_energy 0
 rate_corrector false
 vacancy_trajectory 0.0 0.0 0.0
+# On restart, supply each species total from the matching kmc_log.txt row:
+# species_displacement Mo 0.0 0.0 0.0
+# species_displacement Ta 0.0 0.0 0.0
+# To continue tracer displacements, also read the matching atom snapshot:
+# displacement_restart_filename 100000.displacements.gz

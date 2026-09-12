@@ -32,6 +32,12 @@ namespace api
       cout << "lattice_param: " << parameter.lattice_param_ << endl;
       cout << "structure_type: " << parameter.structure_type_ << endl;
       cout << "log_dump_steps: " << parameter.log_dump_steps_ << endl;
+      cout << "log_dump_mode: " << parameter.log_dump_mode_ << endl;
+      cout << "displacement_restart_filename: " << parameter.displacement_restart_filename_ << endl;
+      for (const auto &[element, displacement] : parameter.species_displacements_)
+      {
+        cout << "species_displacement " << element << ' ' << displacement << endl;
+      }
       cout << "config_dump_steps: " << parameter.config_dump_steps_ << endl;
       cout << "maximum_steps: " << parameter.maximum_steps_ << endl;
       cout << "max_cluster_size: " << parameter.max_cluster_size_ << endl;
@@ -329,7 +335,10 @@ namespace api
                                         vacancyMigrationPredictor,
                                         parameter.time_temperature_filename_,
                                         parameter.rate_corrector_,
-                                        parameter.vacancy_trajectory_);
+                                        parameter.vacancy_trajectory_,
+                                        parameter.log_dump_mode_,
+                                        parameter.displacement_restart_filename_,
+                                        parameter.species_displacements_);
 
     kmcChainOmpi.Simulate();
 
@@ -405,7 +414,10 @@ namespace api
                                       vacancyMigrationPredictor,
                                       parameter.time_temperature_filename_,
                                       parameter.rate_corrector_,
-                                      parameter.vacancy_trajectory_);
+                                      parameter.vacancy_trajectory_,
+                                      parameter.log_dump_mode_,
+                                      parameter.displacement_restart_filename_,
+                                      parameter.species_displacements_);
 
     kmcFirstMpi.Simulate();
 
@@ -481,7 +493,10 @@ namespace api
                                       vacancyMigrationPredictor,
                                       parameter.time_temperature_filename_,
                                       parameter.rate_corrector_,
-                                      parameter.vacancy_trajectory_);
+                                      parameter.vacancy_trajectory_,
+                                      parameter.log_dump_mode_,
+                                      parameter.displacement_restart_filename_,
+                                      parameter.species_displacements_);
 
     kmcFirstOmp.Simulate();
 
