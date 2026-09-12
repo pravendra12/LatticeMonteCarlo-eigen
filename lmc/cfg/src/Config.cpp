@@ -1813,7 +1813,8 @@ void Config::WriteConfigExtended(
     fos.push(boost::iostreams::bzip2_compressor());
   }
   fos.push(ofs);
-  fos.precision(8);
+   // fos.precision(8);
+  fos.precision(17);
   fos << "Number of particles = " << config_out.GetNumAtoms() << '\n';
   fos << "A = 1.0 Angstrom (basic length-scale)\n";
   // fos << "H0(1,1) = " << config_out.basis_(0, 0) << " A\n";
