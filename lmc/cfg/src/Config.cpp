@@ -12,6 +12,13 @@
 
 #include "Config.h"
 
+/*
+ * EXPERIMENTAL ROW-BASIS CONVENTION
+ * basis_.row(0)=a, basis_.row(1)=b, basis_.row(2)=c.
+ * Cartesian columns = basis_.transpose() * fractional columns.
+ * Fractional columns = basis_.inverse().transpose() * Cartesian columns.
+ */
+
 Config::Config() = default;
 
 Config::Config(Eigen::Matrix3d basis,
@@ -29,7 +36,7 @@ Config::Config(Eigen::Matrix3d basis,
                              std::to_string(atom_vector_.size()));
   }
 
-  cartesian_position_matrix_ = basis_ * relative_position_matrix_;
+  cartesian_position_matrix_ = basis_.transpose() * relative_position_matrix_;
   for (size_t id = 0; id < atom_vector_.size(); ++id)
   {
     // id here is also lattice_id
@@ -86,6 +93,7 @@ const Eigen::Matrix3Xd &Config::GetRelativePositionMatrix() const
   return relative_position_matrix_;
 }
 
+/*
 size_t Config::GetCentralAtomLatticeId() const
 {
 
@@ -102,6 +110,78 @@ size_t Config::GetCentralAtomLatticeId() const
   // Exit the program if no match is found
   std::cerr << "Error: Central atom not found in the lattice!" << std::endl;
   exit(EXIT_FAILURE); // Exit with failure status
+}
+  */
+
+size_t Config::GetCentralAtomLatticeId() const
+{
+  if (relative_position_matrix_.cols() == 0)
+  {
+    throw std::runtime_error(
+        "Cannot find central lattice site: configuration is empty.");
+  }
+
+  constexpr double tolerance = 1e-6;
+
+  const Eigen::Vector3d centralRelativePosition{
+      0.5,
+      0.5,
+      0.5};
+
+  const Eigen::Vector3d centralCartesianPosition =
+      basis_ * centralRelativePosition;
+
+  size_t nearestLatticeId = 0;
+
+  double minimumDistanceSquared =
+      std::numeric_limits<double>::max();
+
+  for (Eigen::Index latticeId = 0;
+       latticeId < relative_position_matrix_.cols();
+       ++latticeId)
+  {
+    const Eigen::Vector3d relativePosition =
+        relative_position_matrix_.col(latticeId);
+
+    // Return immediately when an exact central site exists.
+    if (relativePosition.isApprox(
+            centralRelativePosition,
+            tolerance))
+    {
+      return static_cast<size_t>(latticeId);
+    }
+
+    // Cartesian distance is important for non-cubic cells.
+    const Eigen::Vector3d displacement =
+        cartesian_position_matrix_.col(latticeId) -
+        centralCartesianPosition;
+
+    const double distanceSquared =
+        displacement.squaredNorm();
+
+    if (distanceSquared < minimumDistanceSquared)
+    {
+      minimumDistanceSquared = distanceSquared;
+      nearestLatticeId = static_cast<size_t>(latticeId);
+    }
+  }
+
+  std::cerr
+      << "Warning: No lattice site exists exactly at the cell center.\n"
+      << "Using nearest lattice site instead.\n"
+      << "Selected lattice ID: "
+      << nearestLatticeId << '\n'
+      << "Relative position: "
+      << relative_position_matrix_.col(nearestLatticeId).transpose()
+      << '\n'
+      << "Cartesian position: "
+      << cartesian_position_matrix_.col(nearestLatticeId).transpose()
+      << '\n'
+      << "Distance from center: "
+      << std::sqrt(minimumDistanceSquared)
+      << '\n';
+
+  return nearestLatticeId;
 }
 
 size_t Config::GetVacancyAtomId() const
@@ -537,7 +617,7 @@ void Config::Wrap()
       }
     }
   }
-  cartesian_position_matrix_ = basis_ * relative_position_matrix_;
+  cartesian_position_matrix_ = basis_.transpose() * relative_position_matrix_;
 }
 
 void Config::SetElementOfAtom(size_t atom_id, Element element_type)
@@ -631,7 +711,7 @@ void Config::ReassignLattice()
   {
     relative_position_matrix_.col(static_cast<int>(i)) = new_lattice_id_vector[i].first;
   }
-  cartesian_position_matrix_ = basis_ * relative_position_matrix_;
+  cartesian_position_matrix_ = basis_.transpose() * relative_position_matrix_;
   lattice_to_atom_hashmap_ = new_lattice_to_atom_hashmap;
   atom_to_lattice_hashmap_ = new_atom_to_lattice_hashmap;
 }
@@ -651,6 +731,7 @@ Eigen::Vector3d Config::GetNormalizedDirection(size_t referenceId, size_t lattic
   return diff / normFactor;
 }
 
+/*
 Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(size_t lattice_id1, size_t lattice_id2) const
 {
   Eigen::Vector3d relative_distance_vector = relative_position_matrix_.col(static_cast<int>(lattice_id2)) - relative_position_matrix_.col(static_cast<int>(lattice_id1));
@@ -671,6 +752,233 @@ Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(size_t lattice_id1, siz
   }
   return relative_distance_vector;
 }
+*/
+
+/*
+// This function should work for the non-cubic supercell as well
+// slightly inefficient
+Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(
+    size_t lattice_id1,
+    size_t lattice_id2) const
+{
+  const Eigen::Vector3d raw_difference =
+      relative_position_matrix_.col(
+          static_cast<Eigen::Index>(lattice_id2)) -
+      relative_position_matrix_.col(
+          static_cast<Eigen::Index>(lattice_id1));
+
+  // Central periodic-image shift.
+  Eigen::Vector3i central_shift = Eigen::Vector3i::Zero();
+
+  for (int dim = 0; dim < 3; ++dim)
+  {
+    if (periodic_boundary_condition_[static_cast<size_t>(dim)])
+    {
+      central_shift(dim) =
+          static_cast<int>(std::llround(raw_difference(dim)));
+    }
+  }
+
+  Eigen::Vector3d best_difference = raw_difference;
+  double best_distance_squared =
+      std::numeric_limits<double>::infinity();
+
+  //
+  // For a skewed cell, check the neighboring periodic images around
+  // the component-wise wrapped image and select the one having the
+  // smallest Cartesian distance.
+  //
+  for (int sx = -1; sx <= 1; ++sx)
+  {
+    for (int sy = -1; sy <= 1; ++sy)
+    {
+      for (int sz = -1; sz <= 1; ++sz)
+      {
+        if (!periodic_boundary_condition_[0] && sx != 0)
+        {
+          continue;
+        }
+
+        if (!periodic_boundary_condition_[1] && sy != 0)
+        {
+          continue;
+        }
+
+        if (!periodic_boundary_condition_[2] && sz != 0)
+        {
+          continue;
+        }
+
+        Eigen::Vector3i image_shift = central_shift;
+
+        if (periodic_boundary_condition_[0])
+        {
+          image_shift(0) += sx;
+        }
+
+        if (periodic_boundary_condition_[1])
+        {
+          image_shift(1) += sy;
+        }
+
+        if (periodic_boundary_condition_[2])
+        {
+          image_shift(2) += sz;
+        }
+
+        const Eigen::Vector3d candidate_difference =
+            raw_difference - image_shift.cast<double>();
+
+        const double candidate_distance_squared =
+            (basis_.transpose() * candidate_difference).squaredNorm();
+
+        if (candidate_distance_squared < best_distance_squared)
+        {
+          best_distance_squared = candidate_distance_squared;
+          best_difference = candidate_difference;
+        }
+      }
+    }
+  }
+
+  return best_difference;
+}
+
+*/
+
+// This function should work for the non-cubic supercell as well
+// Efficient implementation
+Eigen::Vector3d Config::GetRelativeDistanceVectorLattice(
+    size_t lattice_id1,
+    size_t lattice_id2) const
+{
+  const Eigen::Vector3d raw_difference =
+      relative_position_matrix_.col(
+          static_cast<Eigen::Index>(lattice_id2)) -
+      relative_position_matrix_.col(
+          static_cast<Eigen::Index>(lattice_id1));
+
+  // Central periodic-image shift.
+  Eigen::Vector3i central_shift = Eigen::Vector3i::Zero();
+
+  for (int dim = 0; dim < 3; ++dim)
+  {
+    if (periodic_boundary_condition_[static_cast<size_t>(dim)])
+    {
+      central_shift(dim) =
+          static_cast<int>(std::llround(raw_difference(dim)));
+    }
+  }
+
+  /*
+   * Key optimization for row-stored lattice vectors:
+   * basis_.transpose() * (raw_difference - image_shift)
+   * = basis_.transpose() * raw_difference
+   *   - image_shift(0) * basis_.row(0).transpose()
+   *   - image_shift(1) * basis_.row(1).transpose()
+   *   - image_shift(2) * basis_.row(2).transpose()
+   *
+   * Since image_shift = central_shift + (sx, sy, sz), we can
+   * precompute the Cartesian vector at (sx,sy,sz) = (0,0,0) once,
+   * then reach every other candidate via cheap vector addition
+   * instead of a fresh 3x3 matrix-vector multiply (9 mults + 6
+   * adds) for each of the 27 candidates. The rows of basis_ are
+   * the lattice vectors, so cache them as Cartesian column vectors.
+
+   */
+  const Eigen::Vector3d basis_vec0 = basis_.row(0).transpose();
+  const Eigen::Vector3d basis_vec1 = basis_.row(1).transpose();
+  const Eigen::Vector3d basis_vec2 = basis_.row(2).transpose();
+
+  const Eigen::Vector3d cart_raw = basis_.transpose() * raw_difference;
+
+  const Eigen::Vector3d cart_central_shift =
+      static_cast<double>(central_shift(0)) * basis_vec0 +
+      static_cast<double>(central_shift(1)) * basis_vec1 +
+      static_cast<double>(central_shift(2)) * basis_vec2;
+
+  // Cartesian position at (sx, sy, sz) = (0, 0, 0), i.e. the
+  // component-wise-wrapped candidate.
+  const Eigen::Vector3d cart_base = cart_raw - cart_central_shift;
+
+  // Eigen::Vector3d best_difference = raw_difference;
+  // Eigen::Vector3d best_cart = cart_base;
+  // double best_distance_squared = cart_base.squaredNorm();
+
+  // The initial candidate is the component-wise wrapped image.
+  Eigen::Vector3d best_difference =
+      raw_difference - central_shift.cast<double>();
+
+  double best_distance_squared =
+      cart_base.squaredNorm();
+
+  /*
+   * For a skewed cell, check the neighboring periodic images around
+   * the component-wise wrapped image and select the one having the
+   * smallest Cartesian distance.
+   */
+  for (int sx = -1; sx <= 1; ++sx)
+  {
+    if (!periodic_boundary_condition_[0] && sx != 0)
+    {
+      continue;
+    }
+
+    const Eigen::Vector3d cart_after_x =
+        (sx == 0) ? cart_base : cart_base - static_cast<double>(sx) * basis_vec0;
+    const int shift_x = sx;
+
+    for (int sy = -1; sy <= 1; ++sy)
+    {
+      if (!periodic_boundary_condition_[1] && sy != 0)
+      {
+        continue;
+      }
+
+      const Eigen::Vector3d cart_after_y =
+          (sy == 0) ? cart_after_x : cart_after_x - static_cast<double>(sy) * basis_vec1;
+      const int shift_y = sy;
+
+      for (int sz = -1; sz <= 1; ++sz)
+      {
+        if (!periodic_boundary_condition_[2] && sz != 0)
+        {
+          continue;
+        }
+
+        // Skip the (0,0,0) case, already accounted for as the
+        // initial best candidate.
+        if (sx == 0 && sy == 0 && sz == 0)
+        {
+          continue;
+        }
+
+        const Eigen::Vector3d cart_candidate =
+            (sz == 0) ? cart_after_y : cart_after_y - static_cast<double>(sz) * basis_vec2;
+
+        const double candidate_distance_squared = cart_candidate.squaredNorm();
+
+        if (candidate_distance_squared < best_distance_squared)
+        {
+          best_distance_squared = candidate_distance_squared;
+          // best_cart = cart_candidate;
+
+          Eigen::Vector3i image_shift = central_shift;
+          if (periodic_boundary_condition_[0])
+            image_shift(0) += shift_x;
+          if (periodic_boundary_condition_[1])
+            image_shift(1) += shift_y;
+          if (periodic_boundary_condition_[2])
+            image_shift(2) += sz;
+
+          best_difference = raw_difference - image_shift.cast<double>();
+        }
+      }
+    }
+  }
+
+  return best_difference;
+}
 
 size_t Config::GetDistanceOrder(size_t lattice_id1, size_t lattice_id2) const
 {
@@ -679,7 +987,7 @@ size_t Config::GetDistanceOrder(size_t lattice_id1, size_t lattice_id2) const
     return 0;
   } // same lattice
   Eigen::Vector3d relative_distance_vector = GetRelativeDistanceVectorLattice(lattice_id1, lattice_id2);
-  double cartesian_distance = (basis_ * relative_distance_vector).norm();
+  double cartesian_distance = (basis_.transpose() * relative_distance_vector).norm();
   auto upper = std::upper_bound(cutoffs_.begin(), cutoffs_.end(), cartesian_distance);
 
   // std::cout << std::endl;
@@ -693,6 +1001,8 @@ size_t Config::GetDistanceOrder(size_t lattice_id1, size_t lattice_id2) const
 
   return static_cast<size_t>(1 + std::distance(cutoffs_.begin(), upper));
 }
+
+/* The original UpdateNeighborList function worked only for the cubic supercell
 
 void Config::UpdateNeighborList(std::vector<double> cutoffs)
 {
@@ -787,7 +1097,7 @@ void Config::UpdateNeighborList(std::vector<double> cutoffs)
           }
           // Calculate distance
           const double cartesian_distance_squared =
-              (basis_ * GetRelativeDistanceVectorLattice(lattice_id1, lattice_id2)).squaredNorm();
+              (basis_.transpose() * GetRelativeDistanceVectorLattice(lattice_id1, lattice_id2)).squaredNorm();
           // If the distance is less than the cutoff, the points are bonded
           for (size_t cutoff_squared_id = 0; cutoff_squared_id < cutoffs_squared.size(); ++cutoff_squared_id)
           {
@@ -804,373 +1114,218 @@ void Config::UpdateNeighborList(std::vector<double> cutoffs)
   }
 }
 
-Config Config::ReadMap(const std::string &lattice_filename,
-                       const std::string &element_filename,
-                       const std::string &map_filename)
+*/
+
+// This works for non-cubic cells as well
+void Config::UpdateNeighborList(std::vector<double> cutoffs)
 {
-  std::ifstream ifs_lattice(lattice_filename, std::ifstream::in);
-  if (!ifs_lattice)
-  {
-    throw std::runtime_error("Cannot open " + lattice_filename);
-  }
-  size_t num_atoms;
-  ifs_lattice >> num_atoms;
-  ifs_lattice.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  cutoffs_ = std::move(cutoffs);
+  std::sort(cutoffs_.begin(), cutoffs_.end());
 
-  Eigen::Matrix3d basis;
-  ifs_lattice >> basis(0, 0) >> basis(0, 1) >> basis(0, 2);              // lattice vector a
-  ifs_lattice >> basis(1, 0) >> basis(1, 1) >> basis(1, 2);              // lattice vector b
-  ifs_lattice >> basis(2, 0) >> basis(2, 1) >> basis(2, 2);              // lattice vector c
-  ifs_lattice.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // finish this line
-
-  Eigen::Matrix3Xd relative_position_matrix(3, num_atoms);
-  double position_X, position_Y, position_Z;
-  for (size_t lattice_id = 0; lattice_id < num_atoms; ++lattice_id)
+  if (cutoffs_.empty())
   {
-    ifs_lattice >> position_X >> position_Y >> position_Z;
-    ifs_lattice.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    relative_position_matrix.col(static_cast<int>(lattice_id)) = Eigen::Vector3d{position_X, position_Y, position_Z};
+    throw std::invalid_argument(
+        "UpdateNeighborList requires at least one cutoff.");
   }
 
-  std::ifstream ifs_element(element_filename, std::ifstream::in);
-  if (!ifs_element)
+  std::vector<double> cutoffs_squared(cutoffs_.size());
+  std::transform(cutoffs_.begin(),
+                 cutoffs_.end(),
+                 cutoffs_squared.begin(),
+                 [](double cutoff)
+                 { return cutoff * cutoff; });
+
+  const double max_cutoff = cutoffs_.back();
+
+  std::vector<std::vector<size_t>> neighbors_list(GetNumLattices());
+  neighbor_lists_ = {cutoffs_.size(), neighbors_list};
+
+  /*
+  For a non-orthogonal cell, the lattice-vector lengths cannot be used
+  to determine linked-cell dimensions. The correct dimensions are the
+  perpendicular distances between opposite faces of the simulation cell,
+  obtained from the reciprocal basis. Because basis_ stores lattice
+  vectors as rows, this is basis_.inverse().
+  */
+  const Eigen::Matrix3d reciprocal_basis = basis_.inverse();
+
+  Eigen::Vector3d cell_heights;
+  for (int dim = 0; dim < 3; ++dim)
   {
-    throw std::runtime_error("Cannot open " + element_filename);
+    cell_heights(dim) = 1.0 / reciprocal_basis.col(dim).norm();
   }
 
-  std::vector<Element> atom_vector;
-  atom_vector.reserve(num_atoms);
-  std::string type;
-  for (size_t atom_id = 0; atom_id < num_atoms; ++atom_id)
+  // Choose a bin width <= max_cutoff (cutoff/2 gives finer bins and a
+  // tighter, more selective stencil at large cutoff-to-cell ratios).
+  // Never let it exceed cell_heights, and cap the cell count so we
+  // don't blow up memory for tiny cells or tiny cutoffs.
+  constexpr double kBinFraction = 0.5;
+  const double bin_target = std::max(max_cutoff * kBinFraction, 1e-8);
+
+  for (int dim = 0; dim < 3; ++dim)
   {
-    ifs_element >> type;
-    atom_vector.emplace_back(type);
-    ifs_element.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    num_cells_(dim) = std::max(
+        1, static_cast<int>(std::floor(cell_heights(dim) / bin_target)));
   }
 
-  Config config(basis, relative_position_matrix, atom_vector);
-  std::ifstream ifs_map(map_filename, std::ifstream::in);
-  if (!ifs_map)
+  // How many bins in each direction the cutoff sphere can reach.
+  // This replaces the old fixed {-1,0,1} stencil, which is only
+  // correct when num_cells_(dim) >= 3. It is now correct for any
+  // cell shape/size, including thin, skewed, or small cells.
+  Eigen::Vector3i stencil_range;
+  for (int dim = 0; dim < 3; ++dim)
   {
-    throw std::runtime_error("Cannot open " + map_filename);
-  }
-  size_t lattice_id;
-  for (size_t atom_id = 0; atom_id < num_atoms; ++atom_id)
-  {
-    ifs_map >> lattice_id;
-    config.lattice_to_atom_hashmap_.at(lattice_id) = atom_id;
-    config.atom_to_lattice_hashmap_.at(atom_id) = lattice_id;
-    ifs_map.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-  }
-  return config;
-}
-
-Config Config::ReadCfg(const std::string &filename)
-{
-  std::ifstream ifs(filename, std::ios_base::in | std::ios_base::binary);
-  if (!ifs)
-  {
-    throw std::runtime_error("Could not open file: " + filename);
-  }
-  boost::iostreams::filtering_istream fis;
-  if (boost::filesystem::path(filename).extension() == ".gz")
-  {
-    fis.push(boost::iostreams::gzip_decompressor());
-  }
-  else if (boost::filesystem::path(filename).extension() == ".bz2")
-  {
-    fis.push(boost::iostreams::bzip2_decompressor());
-  }
-  fis.push(ifs);
-
-  // "Number of particles = %i"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  size_t num_atoms;
-  fis >> num_atoms;
-  // A = 1.0 Angstrom (basic length-scale)
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  double basis_xx, basis_xy, basis_xz,
-      basis_yx, basis_yy, basis_yz,
-      basis_zx, basis_zy, basis_zz;
-  // "H0(1,1) = %lf A"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  fis >> basis_xx;
-  // "H0(1,2) = %lf A"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  fis >> basis_xy;
-  // "H0(1,3) = %lf A"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  fis >> basis_xz;
-  // "H0(2,1) = %lf A"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  fis >> basis_yx;
-  // "H0(2,2) = %lf A"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  fis >> basis_yy;
-  // "H0(2,3) = %lf A"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  fis >> basis_yz;
-  // "H0(3,1) = %lf A"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  fis >> basis_zx;
-  // "H0(3,2) = %lf A"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  fis >> basis_zy;
-  // "H0(3,3) = %lf A"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-  fis >> basis_zz;
-  // finish this line
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-  // .NO_VELOCITY.
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-  // "entry_count = 3"
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-  auto basis = Eigen::Matrix3d{{basis_xx, basis_xy, basis_xz},
-                               {basis_yx, basis_yy, basis_yz},
-                               {basis_zx, basis_zy, basis_zz}};
-  std::vector<Element> atom_vector;
-  atom_vector.reserve(num_atoms);
-  Eigen::Matrix3Xd relative_position_matrix(3, num_atoms);
-
-  double mass;
-  std::string type;
-  Eigen::Vector3d relative_position;
-
-  std::vector<std::vector<size_t>> first_neighbors_adjacency_list,
-      second_neighbors_adjacency_list, third_neighbors_adjacency_list;
-
-  for (size_t id = 0; id < num_atoms; ++id)
-  {
-    fis >> mass >> type >> relative_position(0) >> relative_position(1) >> relative_position(2);
-    atom_vector.emplace_back(type);
-    relative_position_matrix.col(static_cast<int>(id)) = relative_position;
-  }
-  Config config_in = Config{basis, relative_position_matrix, atom_vector};
-  config_in.ReassignLattice();
-  config_in.Wrap();
-  return config_in;
-}
-
-Config Config::ReadPoscar(const std::string &filename)
-{
-  std::ifstream ifs(filename, std::ios_base::in | std::ios_base::binary);
-  if (!ifs)
-  {
-    throw std::runtime_error("Could not open file: " + filename);
-  }
-
-  boost::iostreams::filtering_istream fis;
-  if (boost::filesystem::path(filename).extension() == ".gz")
-  {
-    fis.push(boost::iostreams::gzip_decompressor());
-  }
-  else if (boost::filesystem::path(filename).extension() == ".bz2")
-  {
-    fis.push(boost::iostreams::bzip2_decompressor());
-  }
-  fis.push(ifs);
-
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip comment line
-  double scale;
-  fis >> scale; // scale factor, typically 1.0
-  Eigen::Matrix3d basis;
-  fis >> basis(0, 0) >> basis(0, 1) >> basis(0, 2);              // lattice vector a
-  fis >> basis(1, 0) >> basis(1, 1) >> basis(1, 2);              // lattice vector b
-  fis >> basis(2, 0) >> basis(2, 1) >> basis(2, 2);              // lattice vector c
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip to next line
-  basis *= scale;
-  auto inverse_basis = basis.inverse();
-
-  // Read the elements and number of atoms
-  std::string buffer;
-  getline(fis, buffer); // Skip line
-  std::istringstream element_iss(buffer);
-  getline(fis, buffer); // Element counts
-  std::istringstream count_iss(buffer);
-
-  std::string element;
-  size_t num_elems;
-  size_t num_atoms = 0;
-  std::vector<std::pair<std::string, size_t>> elements_counts;
-
-  while (element_iss >> element && count_iss >> num_elems)
-  {
-    elements_counts.emplace_back(element, num_elems);
-    num_atoms += num_elems;
-  }
-
-  getline(fis, buffer); // Check if positions are relative or Cartesian
-  bool relative_option =
-      buffer[0] != 'C' && buffer[0] != 'c' && buffer[0] != 'K' && buffer[0] != 'k';
-
-  // Store atom information
-  std::vector<Element> atom_vector;
-  atom_vector.reserve(num_atoms);
-  Eigen::Matrix3Xd relative_position_matrix(3, num_atoms);
-
-  size_t id_count = 0;
-  double position_X, position_Y, position_Z;
-
-  for (const auto &[element_symbol, count] : elements_counts)
-  {
-    for (size_t j = 0; j < count; ++j)
+    const double bin_width = cell_heights(dim) / num_cells_(dim);
+    stencil_range(dim) = std::max(
+        1, static_cast<int>(std::ceil(max_cutoff / bin_width)));
+    // Never search further than half the cells in a periodic direction
+    // (searching more would revisit the same cells redundantly).
+    if (periodic_boundary_condition_[static_cast<size_t>(dim)])
     {
-      fis >> position_X >> position_Y >> position_Z;
-      fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-
-      if (relative_option)
-      {
-        // Read fractional coordinates
-        relative_position_matrix.col(static_cast<int>(id_count)) =
-            Eigen::Vector3d(position_X, position_Y, position_Z);
-      }
-      else
-      {
-        // Convert Cartesian coordinates to fractional coordinates
-        relative_position_matrix.col(static_cast<int>(id_count)) =
-            inverse_basis * Eigen::Vector3d(position_X, position_Y, position_Z);
-      }
-      atom_vector.emplace_back(element_symbol);
-      ++id_count;
-    }
-  }
-
-  Config config_in = Config{basis, relative_position_matrix, atom_vector};
-  config_in.ReassignLattice();
-  config_in.Wrap();
-
-  return config_in;
-}
-
-Config Config::ReadConfig(const std::string &filename)
-{
-  // Get the file extension
-  std::string extension = boost::filesystem::path(filename).extension().string();
-  // Determine the file type and call the appropriate function
-  if (extension == ".cfg")
-  {
-    return Config::ReadCfg(filename);
-  }
-  else if (extension == ".POSCAR")
-  {
-    return Config::ReadPoscar(filename);
-  }
-  else if (extension == ".gz" || extension == ".bz2")
-  {
-    // Handle compressed files by checking their base name
-    std::string base_extension = boost::filesystem::path(boost::filesystem::path(filename).stem()).extension().string();
-    if (base_extension == ".cfg")
-    {
-      return Config::ReadCfg(filename);
-    }
-    else if (base_extension == ".POSCAR")
-    {
-      return Config::ReadPoscar(filename);
-    }
-  }
-
-  throw std::runtime_error(
-      "Unsupported file format: " + filename +
-      ". Supported formats are: .cfg, .POSCAR, .cfg.gz, .cfg.bz2, .POSCAR.gz, .POSCAR.bz2");
-}
-
-Config Config::ReadXyz(const std::string &filename)
-{
-  // Open file stream (binary mode only matters for compressed reading)
-  std::ifstream ifs(filename, std::ios::in | std::ios::binary);
-  if (!ifs.is_open())
-  {
-    throw std::runtime_error("Could not open file: " + filename);
-  }
-
-  // Setup boost filtering stream for optional decompression
-  boost::iostreams::filtering_istream fis;
-  auto ext = boost::filesystem::path(filename).extension().string();
-  if (ext == ".gz")
-  {
-    fis.push(boost::iostreams::gzip_decompressor());
-  }
-  else if (ext == ".bz2")
-  {
-    fis.push(boost::iostreams::bzip2_decompressor());
-  }
-  fis.push(ifs); // push the underlying file stream last
-
-  // --- Read number of atoms ---
-  size_t num_atoms;
-  fis >> num_atoms;
-  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-
-  std::string lattice_line;
-  std::getline(fis, lattice_line);
-
-  // Extract lattice numbers
-  size_t lat_start = lattice_line.find("Lattice=\"");
-  Eigen::Matrix3d basis = Eigen::Matrix3d::Identity();
-  if (lat_start != std::string::npos)
-  {
-    lat_start += 9; // move past 'Lattice="'
-    size_t lat_end = lattice_line.find('"', lat_start);
-    std::string lat_str = lattice_line.substr(lat_start, lat_end - lat_start);
-
-    std::istringstream lat_iss(lat_str);
-    std::vector<double> values;
-    double v;
-    while (lat_iss >> v)
-      values.push_back(v);
-
-    if (values.size() == 9)
-    {
-      basis << values[0], values[1], values[2],
-          values[3], values[4], values[5],
-          values[6], values[7], values[8];
+      stencil_range(dim) = std::min(stencil_range(dim), num_cells_(dim) / 2 + 1);
     }
     else
     {
-      throw std::runtime_error("Invalid lattice line, expected 9 numbers");
+      // Non-periodic: can't wrap, so just clamp to available cells.
+      stencil_range(dim) = std::min(stencil_range(dim), num_cells_(dim) - 1);
     }
   }
 
-  std::vector<Element> atom_vector;
-  atom_vector.reserve(num_atoms);
+  cells_ = std::vector<std::vector<size_t>>(
+      static_cast<size_t>(num_cells_.prod()));
 
-  Eigen::Matrix3Xd cartesian_position_matrix(3, num_atoms);
-
-  // --- Read atoms line by line ---
-  std::string line;
-  for (size_t i = 0; i < num_atoms; ++i)
+  for (size_t lattice_id = 0; lattice_id < GetNumLattices(); ++lattice_id)
   {
-    if (!std::getline(fis, line))
+    Eigen::Vector3d relative_position =
+        relative_position_matrix_.col(static_cast<Eigen::Index>(lattice_id));
+
+    for (int dim = 0; dim < 3; ++dim)
     {
-      throw std::runtime_error("Unexpected end of file while reading atom " + std::to_string(i + 1));
+      if (periodic_boundary_condition_[static_cast<size_t>(dim)])
+      {
+        // Correctly wrap fractional coordinates into [0, 1).
+        relative_position(dim) -= std::floor(relative_position(dim));
+      }
+      else if (relative_position(dim) < 0.0 ||
+               relative_position(dim) >= 1.0)
+      {
+        throw std::runtime_error(
+            "Non-periodic fractional coordinate is outside [0,1).");
+      }
     }
 
-    std::istringstream iss(line);
-    std::string symbol;
-    double x, y, z;
+    Eigen::Vector3i cell_pos =
+        (num_cells_.cast<double>().array() *
+         relative_position.array())
+            .floor()
+            .cast<int>();
 
-    if (!(iss >> symbol >> x >> y >> z))
+    // Only protect against floating-point roundoff after wrapping.
+    for (int dim = 0; dim < 3; ++dim)
     {
-      throw std::runtime_error("Failed to parse atom line " + std::to_string(i + 1));
+      cell_pos(dim) =
+          std::clamp(cell_pos(dim), 0, num_cells_(dim) - 1);
     }
 
-    atom_vector.emplace_back(symbol);
-    cartesian_position_matrix(0, i) = x;
-    cartesian_position_matrix(1, i) = y;
-    cartesian_position_matrix(2, i) = z;
+    const int cell_idx =
+        (cell_pos(0) * num_cells_(1) + cell_pos(1)) * num_cells_(2) + cell_pos(2);
+    cells_.at(static_cast<size_t>(cell_idx)).push_back(lattice_id);
   }
 
-  Eigen::Matrix3d inv_basis = basis.inverse();
+  // Precompute all (di,dj,dk) offsets within the per-dimension stencil range.
+  std::vector<std::tuple<int, int, int>> offset_list;
+  offset_list.reserve(static_cast<size_t>(
+      (2 * stencil_range(0) + 1) * (2 * stencil_range(1) + 1) *
+      (2 * stencil_range(2) + 1)));
+  for (int di = -stencil_range(0); di <= stencil_range(0); ++di)
+  {
+    for (int dj = -stencil_range(1); dj <= stencil_range(1); ++dj)
+    {
+      for (int dk = -stencil_range(2); dk <= stencil_range(2); ++dk)
+      {
+        offset_list.emplace_back(di, dj, dk);
+      }
+    }
+  }
 
-  Eigen::Matrix3Xd relative_positions_matrix(3, cartesian_position_matrix.cols());
-  relative_positions_matrix = inv_basis * cartesian_position_matrix;
+  const int nx = num_cells_(0), ny = num_cells_(1), nz = num_cells_(2);
 
-  Config config_in = Config{basis, relative_positions_matrix, atom_vector};
+  for (int cell_idx = 0; cell_idx < num_cells_.prod(); ++cell_idx)
+  {
+    auto &cell = cells_.at(static_cast<size_t>(cell_idx));
+    if (cell.empty())
+    {
+      continue;
+    }
 
-  config_in.ReassignLattice();
-  config_in.Wrap();
+    const int i = cell_idx / (ny * nz);
+    const int j = (cell_idx % (ny * nz)) / nz;
+    const int k = cell_idx % nz;
 
-  return config_in;
+    // Dedup neighbor cells: with a wide stencil and/or few cells,
+    // multiple (di,dj,dk) offsets can wrap around to the same
+    // neighbor cell. Without this guard those pairs get pushed
+    // into neighbor_lists_ multiple times.
+    std::unordered_set<int> visited_neighbor_cells;
+    visited_neighbor_cells.reserve(offset_list.size());
+
+    for (const auto &[di, dj, dk] : offset_list)
+    {
+      int ni = i + di, nj = j + dj, nk = k + dk;
+
+      // Non-periodic directions: skip offsets that fall outside the cell grid.
+      if (!periodic_boundary_condition_[0] && (ni < 0 || ni >= nx))
+        continue;
+      if (!periodic_boundary_condition_[1] && (nj < 0 || nj >= ny))
+        continue;
+      if (!periodic_boundary_condition_[2] && (nk < 0 || nk >= nz))
+        continue;
+
+      ni = ((ni % nx) + nx) % nx;
+      nj = ((nj % ny) + ny) % ny;
+      nk = ((nk % nz) + nz) % nz;
+
+      const int neighbor_cell_idx = (ni * ny + nj) * nz + nk;
+
+      if (!visited_neighbor_cells.insert(neighbor_cell_idx).second)
+      {
+        continue; // already processed this (home cell, neighbor cell) pair
+      }
+
+      auto &neighbor_cell = cells_.at(static_cast<size_t>(neighbor_cell_idx));
+      if (neighbor_cell.empty())
+      {
+        continue;
+      }
+
+      for (size_t lattice_id1 : cell)
+      {
+        for (size_t lattice_id2 : neighbor_cell)
+        {
+          // Avoid self-pairs and double counting within the same cell pair.
+          if (lattice_id2 >= lattice_id1)
+          {
+            continue;
+          }
+          const double cartesian_distance_squared =
+              (basis_.transpose() * GetRelativeDistanceVectorLattice(lattice_id1, lattice_id2))
+                  .squaredNorm();
+
+          for (size_t cutoff_squared_id = 0;
+               cutoff_squared_id < cutoffs_squared.size();
+               ++cutoff_squared_id)
+          {
+            if (cartesian_distance_squared < cutoffs_squared.at(cutoff_squared_id))
+            {
+              neighbor_lists_.at(cutoff_squared_id).at(lattice_id1).push_back(lattice_id2);
+              neighbor_lists_.at(cutoff_squared_id).at(lattice_id2).push_back(lattice_id1);
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 Config Config::GenerateSupercell(
@@ -1221,7 +1376,6 @@ Config Config::GenerateSupercell(
   }
 
   Config supercell = Config{basis, relative_position_matrix, atom_vector};
-
   supercell.ReassignLattice();
   supercell.Wrap();
 
@@ -1286,6 +1440,358 @@ Config Config::GenerateAlloySupercell(
   return supercell;
 }
 
+Config Config::ReadCfg(const std::string &filename)
+{
+  std::ifstream ifs(filename, std::ios_base::in | std::ios_base::binary);
+  if (!ifs)
+  {
+    throw std::runtime_error("Could not open file: " + filename);
+  }
+  boost::iostreams::filtering_istream fis;
+  if (boost::filesystem::path(filename).extension() == ".gz")
+  {
+    fis.push(boost::iostreams::gzip_decompressor());
+  }
+  else if (boost::filesystem::path(filename).extension() == ".bz2")
+  {
+    fis.push(boost::iostreams::bzip2_decompressor());
+  }
+  fis.push(ifs);
+
+  // "Number of particles = %i"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  size_t num_atoms;
+  fis >> num_atoms;
+  // A = 1.0 Angstrom (basic length-scale)
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  double basis_xx, basis_xy, basis_xz,
+      basis_yx, basis_yy, basis_yz,
+      basis_zx, basis_zy, basis_zz;
+  // "H0(1,1) = %lf A"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  fis >> basis_xx;
+  // "H0(1,2) = %lf A"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  fis >> basis_xy;
+  // "H0(1,3) = %lf A"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  fis >> basis_xz;
+  // "H0(2,1) = %lf A"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  fis >> basis_yx;
+  // "H0(2,2) = %lf A"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  fis >> basis_yy;
+  // "H0(2,3) = %lf A"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  fis >> basis_yz;
+  // "H0(3,1) = %lf A"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  fis >> basis_zx;
+  // "H0(3,2) = %lf A"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  fis >> basis_zy;
+  // "H0(3,3) = %lf A"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+  fis >> basis_zz;
+  // finish this line
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  // .NO_VELOCITY.
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  // "entry_count = 3"
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  auto basis_rows = Eigen::Matrix3d{{basis_xx, basis_xy, basis_xz},
+                                    {basis_yx, basis_yy, basis_yz},
+                                    {basis_zx, basis_zy, basis_zz}};
+
+  // Config stores lattice vectors a, b, c as rows.
+  auto basis = basis_rows;
+
+  std::vector<Element> atom_vector;
+  atom_vector.reserve(num_atoms);
+  Eigen::Matrix3Xd relative_position_matrix(3, num_atoms);
+
+  double mass;
+  std::string type;
+  Eigen::Vector3d relative_position;
+
+  std::vector<std::vector<size_t>> first_neighbors_adjacency_list,
+      second_neighbors_adjacency_list, third_neighbors_adjacency_list;
+
+  for (size_t id = 0; id < num_atoms; ++id)
+  {
+    fis >> mass >> type >> relative_position(0) >> relative_position(1) >> relative_position(2);
+    atom_vector.emplace_back(type);
+    relative_position_matrix.col(static_cast<int>(id)) = relative_position;
+  }
+  Config config_in = Config{basis, relative_position_matrix, atom_vector};
+  config_in.ReassignLattice();
+  config_in.Wrap();
+  return config_in;
+}
+
+Config Config::ReadXyz(const std::string &filename)
+{
+  // Open file stream (binary mode only matters for compressed reading)
+  std::ifstream ifs(filename, std::ios::in | std::ios::binary);
+  if (!ifs.is_open())
+  {
+    throw std::runtime_error("Could not open file: " + filename);
+  }
+
+  // Setup boost filtering stream for optional decompression
+  boost::iostreams::filtering_istream fis;
+  auto ext = boost::filesystem::path(filename).extension().string();
+  if (ext == ".gz")
+  {
+    fis.push(boost::iostreams::gzip_decompressor());
+  }
+  else if (ext == ".bz2")
+  {
+    fis.push(boost::iostreams::bzip2_decompressor());
+  }
+  fis.push(ifs); // push the underlying file stream last
+
+  // --- Read number of atoms ---
+  size_t num_atoms;
+  fis >> num_atoms;
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+  std::string lattice_line;
+  std::getline(fis, lattice_line);
+
+  // Extract lattice numbers
+  size_t lat_start = lattice_line.find("Lattice=\"");
+
+  Eigen::Matrix3d basis_rows = Eigen::Matrix3d::Identity();
+  if (lat_start != std::string::npos)
+  {
+    lat_start += 9; // move past 'Lattice="'
+    size_t lat_end = lattice_line.find('"', lat_start);
+    std::string lat_str = lattice_line.substr(lat_start, lat_end - lat_start);
+
+    std::istringstream lat_iss(lat_str);
+    std::vector<double> values;
+    double v;
+    while (lat_iss >> v)
+      values.push_back(v);
+
+    if (values.size() == 9)
+    {
+      basis_rows << values[0], values[1], values[2],
+          values[3], values[4], values[5],
+          values[6], values[7], values[8];
+    }
+    else
+    {
+      throw std::runtime_error("Invalid lattice line, expected 9 numbers");
+    }
+  }
+
+  // Config stores lattice vectors a, b, c as rows.
+  auto basis = basis_rows;
+
+  std::vector<Element> atom_vector;
+  atom_vector.reserve(num_atoms);
+
+  Eigen::Matrix3Xd cartesian_position_matrix(3, num_atoms);
+
+  // --- Read atoms line by line ---
+  std::string line;
+  for (size_t i = 0; i < num_atoms; ++i)
+  {
+    if (!std::getline(fis, line))
+    {
+      throw std::runtime_error("Unexpected end of file while reading atom " + std::to_string(i + 1));
+    }
+
+    std::istringstream iss(line);
+    std::string symbol;
+    double x, y, z;
+
+    if (!(iss >> symbol >> x >> y >> z))
+    {
+      throw std::runtime_error("Failed to parse atom line " + std::to_string(i + 1));
+    }
+
+    atom_vector.emplace_back(symbol);
+    cartesian_position_matrix(0, i) = x;
+    cartesian_position_matrix(1, i) = y;
+    cartesian_position_matrix(2, i) = z;
+  }
+
+  const Eigen::Matrix3d cartesian_to_fractional =
+      basis.inverse().transpose();
+
+  Eigen::Matrix3Xd relative_positions_matrix(3, cartesian_position_matrix.cols());
+  relative_positions_matrix =
+      cartesian_to_fractional * cartesian_position_matrix;
+
+  Config config_in = Config{basis, relative_positions_matrix, atom_vector};
+
+  config_in.ReassignLattice();
+  config_in.Wrap();
+
+  return config_in;
+}
+
+Config Config::ReadPoscar(const std::string &filename)
+{
+  std::ifstream ifs(filename, std::ios_base::in | std::ios_base::binary);
+  if (!ifs)
+  {
+    throw std::runtime_error("Could not open file: " + filename);
+  }
+
+  boost::iostreams::filtering_istream fis;
+  if (boost::filesystem::path(filename).extension() == ".gz")
+  {
+    fis.push(boost::iostreams::gzip_decompressor());
+  }
+  else if (boost::filesystem::path(filename).extension() == ".bz2")
+  {
+    fis.push(boost::iostreams::bzip2_decompressor());
+  }
+  fis.push(ifs);
+
+  fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip comment line
+  double scale;
+  fis >> scale; // scale factor, typically 1.0
+
+  // Eigen::Matrix3d basis;
+  // fis >> basis(0, 0) >> basis(0, 1) >> basis(0, 2);              // lattice vector a
+  // fis >> basis(1, 0) >> basis(1, 1) >> basis(1, 2);              // lattice vector b
+  // fis >> basis(2, 0) >> basis(2, 1) >> basis(2, 2);              // lattice vector c
+  // fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip to next line
+  // basis *= scale;
+  // auto inverse_basis = basis.inverse();
+
+  // Internally, basis_ stores lattice vectors as rows.
+
+  Eigen::Matrix3d basis_rows;
+
+  fis >> basis_rows(0, 0) >> basis_rows(0, 1) >> basis_rows(0, 2);
+
+  fis >> basis_rows(1, 0) >> basis_rows(1, 1) >> basis_rows(1, 2);
+
+  fis >> basis_rows(2, 0) >> basis_rows(2, 1) >> basis_rows(2, 2);
+
+  fis.ignore(
+      std::numeric_limits<std::streamsize>::max(),
+      '\n');
+
+  basis_rows *= scale;
+
+  // POSCAR and Config both store the three cell vectors as rows.
+  const Eigen::Matrix3d basis = basis_rows;
+
+  // Cartesian columns = basis.transpose() * fractional columns.
+  const Eigen::Matrix3d inverse_basis =
+      basis.inverse().transpose();
+
+  // Read the elements and number of atoms
+  std::string buffer;
+  getline(fis, buffer); // Skip line
+  std::istringstream element_iss(buffer);
+  getline(fis, buffer); // Element counts
+  std::istringstream count_iss(buffer);
+
+  std::string element;
+  size_t num_elems;
+  size_t num_atoms = 0;
+  std::vector<std::pair<std::string, size_t>> elements_counts;
+
+  while (element_iss >> element && count_iss >> num_elems)
+  {
+    elements_counts.emplace_back(element, num_elems);
+    num_atoms += num_elems;
+  }
+
+  getline(fis, buffer); // Check if positions are relative or Cartesian
+  bool relative_option =
+      buffer[0] != 'C' && buffer[0] != 'c' && buffer[0] != 'K' && buffer[0] != 'k';
+
+  // Store atom information
+  std::vector<Element> atom_vector;
+  atom_vector.reserve(num_atoms);
+  Eigen::Matrix3Xd relative_position_matrix(3, num_atoms);
+
+  size_t id_count = 0;
+  double position_X, position_Y, position_Z;
+
+  for (const auto &[element_symbol, count] : elements_counts)
+  {
+    for (size_t j = 0; j < count; ++j)
+    {
+      fis >> position_X >> position_Y >> position_Z;
+      fis.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+      if (relative_option)
+      {
+        // Read fractional coordinates
+        relative_position_matrix.col(static_cast<int>(id_count)) =
+            Eigen::Vector3d(position_X, position_Y, position_Z);
+      }
+      else
+      {
+        // Convert Cartesian coordinates to fractional coordinates
+        relative_position_matrix.col(static_cast<int>(id_count)) =
+            inverse_basis * Eigen::Vector3d(position_X, position_Y, position_Z);
+      }
+      atom_vector.emplace_back(element_symbol);
+      ++id_count;
+    }
+  }
+
+  Config config_in = Config{basis, relative_position_matrix, atom_vector};
+  config_in.ReassignLattice();
+  config_in.Wrap();
+
+  // std::cout << relative_position_matrix << std::endl;
+
+  return config_in;
+}
+
+Config Config::ReadConfig(const std::string &filename)
+{
+  // Get the file extension
+  std::string extension = boost::filesystem::path(filename).extension().string();
+  // Determine the file type and call the appropriate function
+  if (extension == ".cfg")
+  {
+    return Config::ReadCfg(filename);
+  }
+  else if (extension == ".POSCAR")
+  {
+    return Config::ReadPoscar(filename);
+  }
+  else if (extension == ".xyz")
+  {
+    return Config::ReadXyz(filename);
+  }
+  else if (extension == ".gz" || extension == ".bz2")
+  {
+    // Handle compressed files by checking their base name
+    std::string base_extension = boost::filesystem::path(boost::filesystem::path(filename).stem()).extension().string();
+    if (base_extension == ".cfg")
+    {
+      return Config::ReadCfg(filename);
+    }
+    else if (base_extension == ".POSCAR")
+    {
+      return Config::ReadPoscar(filename);
+    }
+    else if (base_extension == ".xyz")
+    {
+      return Config::ReadXyz(filename);
+    }
+  }
+
+  throw std::runtime_error(
+      "Unsupported file format: " + filename +
+      ". Supported formats are: .cfg, .POSCAR, .cfg.gz, .cfg.bz2, .POSCAR.gz, .POSCAR.bz2, .xyz, .xyz.gz, .xyz.bz2");
+}
+
 void Config::WriteConfig(const std::string &filename, const Config &config_out)
 {
   WriteConfigExtended(filename, config_out, {});
@@ -1307,18 +1813,34 @@ void Config::WriteConfigExtended(
     fos.push(boost::iostreams::bzip2_compressor());
   }
   fos.push(ofs);
-  fos.precision(8);
+  fos.precision(17);
   fos << "Number of particles = " << config_out.GetNumAtoms() << '\n';
   fos << "A = 1.0 Angstrom (basic length-scale)\n";
-  fos << "H0(1,1) = " << config_out.basis_(0, 0) << " A\n";
-  fos << "H0(1,2) = " << config_out.basis_(0, 1) << " A\n";
-  fos << "H0(1,3) = " << config_out.basis_(0, 2) << " A\n";
-  fos << "H0(2,1) = " << config_out.basis_(1, 0) << " A\n";
-  fos << "H0(2,2) = " << config_out.basis_(1, 1) << " A\n";
-  fos << "H0(2,3) = " << config_out.basis_(1, 2) << " A\n";
-  fos << "H0(3,1) = " << config_out.basis_(2, 0) << " A\n";
-  fos << "H0(3,2) = " << config_out.basis_(2, 1) << " A\n";
-  fos << "H0(3,3) = " << config_out.basis_(2, 2) << " A\n";
+  // fos << "H0(1,1) = " << config_out.basis_(0, 0) << " A\n";
+  // fos << "H0(1,2) = " << config_out.basis_(0, 1) << " A\n";
+  // fos << "H0(1,3) = " << config_out.basis_(0, 2) << " A\n";
+  // fos << "H0(2,1) = " << config_out.basis_(1, 0) << " A\n";
+  // fos << "H0(2,2) = " << config_out.basis_(1, 1) << " A\n";
+  // fos << "H0(2,3) = " << config_out.basis_(1, 2) << " A\n";
+  // fos << "H0(3,1) = " << config_out.basis_(2, 0) << " A\n";
+  // fos << "H0(3,2) = " << config_out.basis_(2, 1) << " A\n";
+  // fos << "H0(3,3) = " << config_out.basis_(2, 2) << " A\n";
+
+  // Config and CFG both store lattice vectors a, b, c as rows.
+  const Eigen::Matrix3d &basis_rows = config_out.basis_;
+
+  fos << "H0(1,1) = " << basis_rows(0, 0) << " A\n";
+  fos << "H0(1,2) = " << basis_rows(0, 1) << " A\n";
+  fos << "H0(1,3) = " << basis_rows(0, 2) << " A\n";
+
+  fos << "H0(2,1) = " << basis_rows(1, 0) << " A\n";
+  fos << "H0(2,2) = " << basis_rows(1, 1) << " A\n";
+  fos << "H0(2,3) = " << basis_rows(1, 2) << " A\n";
+
+  fos << "H0(3,1) = " << basis_rows(2, 0) << " A\n";
+  fos << "H0(3,2) = " << basis_rows(2, 1) << " A\n";
+  fos << "H0(3,3) = " << basis_rows(2, 2) << " A\n";
+
   fos << ".NO_VELOCITY.\n";
   fos << "entry_count = " << 3 + auxiliary_lists.size() << "\n";
 
@@ -1363,7 +1885,16 @@ void Config::WriteXyzExtended(const std::string &filename,
   fos.precision(8);
   fos << config_out.GetNumAtoms() << '\n';
   Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, " ", " ", "", "", "", "");
-  fos << "Lattice=\"" << config_out.basis_.format(fmt) << "\" ";
+
+  // fos << "Lattice=\"" << config_out.basis_.format(fmt) << "\" ";
+
+  // Config stores lattice vectors as rows; XYZ writes a, b, c consecutively.
+  const Eigen::Matrix3d &basis_for_output = config_out.basis_;
+
+  fos << "Lattice=\""
+      << basis_for_output.format(fmt)
+      << "\" ";
+
   fos << "pbc=\"" << config_out.periodic_boundary_condition_[0] << " "
       << config_out.periodic_boundary_condition_[1] << " "
       << config_out.periodic_boundary_condition_[2] << "\" ";
@@ -1443,109 +1974,4 @@ void Config::WriteXyzExtended(const std::string &filename,
     }
     fos << std::endl;
   }
-}
-
-//
-//
-void Config::WriteLattice(const std::string &filename, size_t &max_bond_order) const
-{
-  boost::iostreams::stream_buffer<boost::iostreams::file_sink> buffer(filename);
-  std::ostream ofs(&buffer);
-  ofs.precision(16);
-
-  ofs << GetNumAtoms() << " positions in total" << '\n';
-  ofs << basis_ << std::endl;
-
-  Eigen::IOFormat pos_format(Eigen::StreamPrecision, Eigen::DontAlignCols, " ", " ", "", "", "", "");
-
-  for (size_t i = 0; i < GetNumLattices(); ++i)
-  {
-    auto relative_position_lattice = GetRelativePositionOfLattice(i);
-    ofs << relative_position_lattice.transpose().format(pos_format) << " # ";
-
-    // Write neighbors for 1st, 2nd, .. upto max_bond_order
-    for (size_t order = 1; order <= max_bond_order; ++order)
-    {
-      const auto &neighbors = GetNeighborLatticeIdVectorOfLattice(i, order);
-      for (const auto neighbor : neighbors)
-      {
-        ofs << neighbor << ' ';
-      }
-    }
-    ofs << '\n';
-  }
-  buffer.close(); // Ensures all data is written at once
-}
-
-static void ExpandShell(
-    const Config &config,
-    const std::unordered_set<size_t> &currentShell,
-    std::unordered_set<size_t> &visitedSet,
-    std::unordered_set<size_t> &nextShell)
-{
-  for (const auto latticeId : currentShell)
-  {
-    const auto &neighbors = config.GetNeighborLatticeIdVectorOfLattice(latticeId, 1);
-    for (const auto nId : neighbors)
-    {
-      if (visitedSet.insert(nId).second) // Insert only if not already present
-      {
-        nextShell.insert(nId);
-      }
-    }
-  }
-}
-
-Config Config::ExtractLocalSupercell(
-    const std::pair<size_t, size_t> &latticeJumpPair,
-    size_t supercellSize,
-    double latticeParam) const
-{
-  if (supercellSize < 2)
-  {
-    throw std::invalid_argument("Supercell size should be at least 2");
-  }
-
-  int maxShell = static_cast<int>(supercellSize - 1);
-
-  std::unordered_set<size_t> latticeIdSet{latticeJumpPair.first, latticeJumpPair.second};
-  std::unordered_set<size_t> latticeIdSetNN{latticeJumpPair.second};
-
-  std::unordered_set<size_t> currentShell{latticeJumpPair.first};
-  std::unordered_set<size_t> currentShellNN{latticeJumpPair.second};
-
-  for (int shell = 0; shell < maxShell; ++shell)
-  {
-    std::unordered_set<size_t> nextShell;
-    std::unordered_set<size_t> nextShellNN;
-
-    ExpandShell(*this, currentShell, latticeIdSet, nextShell);
-    ExpandShell(*this, currentShellNN, latticeIdSetNN, nextShellNN);
-
-    currentShell = std::move(nextShell);
-    currentShellNN = std::move(nextShellNN);
-  }
-
-  // Merge the two lattice ID sets
-  latticeIdSet.insert(latticeIdSetNN.begin(), latticeIdSetNN.end());
-
-  // Construct the output configuration
-  size_t numSites = latticeIdSet.size();
-
-  Eigen::Matrix3Xd relativePositionMatrix(3, numSites);
-  std::vector<Element> atomVector;
-  atomVector.reserve(numSites);
-
-  size_t i = 0;
-  for (const auto latticeId : latticeIdSet)
-  {
-    Eigen::Vector3d relativePosition = GetRelativePositionOfLattice(latticeId);
-
-    relativePositionMatrix.col(i++) = relativePosition;
-    atomVector.emplace_back(GetElementOfLattice(latticeId));
-  }
-
-  // Eigen::Matrix3d newBasis = Eigen::Matrix3d::Identity() * supercellSize * latticeParam;
-  Eigen::Matrix3d newBasis = GetBasis();
-  return Config(newBasis, relativePositionMatrix, atomVector);
 }
